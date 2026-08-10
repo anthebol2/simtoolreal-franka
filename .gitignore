@@ -232,3 +232,5 @@ videos/
 outputs/
 evals_isaacsim/
 evals/
+recorded_robot_inputs/
+franka_policy_v1/model.pth

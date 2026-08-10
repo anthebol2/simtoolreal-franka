@@ -198,7 +198,9 @@ env:
   tableFriction: 0.5
 
   asset:
-    robot: "urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
+    robot: "urdf/franka_right_sharpa_description/franka_right_sharpa.urdf"
+    # Original paper robot (KUKA iiwa14 + left SharPa):
+    # robot: "urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
 
     table: "urdf/table_narrow.urdf"
 

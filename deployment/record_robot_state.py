@@ -97,8 +97,13 @@ class RecordRobotState:
         self.sharpa_joint_pos_target_history: list[np.ndarray] = []
 
         # Subscribers
+        from isaacgymenvs.utils.observation_action_utils_sharpa import (
+            get_robot_profile,
+        )
+
+        self.profile = get_robot_profile("franka_right_sharpa")
         self.iiwa_joint_state_sub = rospy.Subscriber(
-            "/iiwa/joint_states",
+            f"/{self.profile.ros_arm_ns}/joint_states",
             JointState,
             self._iiwa_joint_state_callback,
             queue_size=1,
@@ -110,7 +115,10 @@ class RecordRobotState:
             queue_size=1,
         )
         self.iiwa_joint_cmd_sub = rospy.Subscriber(
-            "/iiwa/joint_cmd", JointState, self._iiwa_joint_cmd_callback, queue_size=1
+            f"/{self.profile.ros_arm_ns}/joint_cmd",
+            JointState,
+            self._iiwa_joint_cmd_callback,
+            queue_size=1,
         )
         self.sharpa_joint_cmd_sub = rospy.Subscriber(
             "/sharpa/joint_cmd",

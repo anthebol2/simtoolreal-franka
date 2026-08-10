@@ -286,7 +286,12 @@ class SimToolReal(VecTask):
                 dtype=np.float32,
                 # [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], dtype=np.float32
             )
-        self.palm_offset = np.array([-0.00, -0.02, 0.16], dtype=np.float32)
+        if self.use_franka:
+            # Same physical palm-center point as the KUKA setup (mirrored for the
+            # right hand), re-expressed in the panda_panda_link7 body frame.
+            self.palm_offset = np.array([0.1657, -0.0054, -0.1805], dtype=np.float32)
+        else:
+            self.palm_offset = np.array([-0.00, -0.02, 0.16], dtype=np.float32)
 
         assert self.num_fingertips == len(self.fingertips)
 
@@ -476,6 +481,12 @@ class SimToolReal(VecTask):
             desired_kuka_pos = torch.tensor(
                 [-1.571, 1.571, -0.000, 1.376, -0.000, 1.485, 1.308]
             )  # same as above but 60 deg offset for the mount
+        if self.use_franka:
+            # IK-matched to the KUKA start palm pose (mirrored for the right hand)
+            # at the Franka base offset robot_base_y=0.65 (see _create_envs)
+            desired_kuka_pos = torch.tensor(
+                [-0.6242, -0.2527, -0.7214, -1.2850, -0.1649, 0.9929, 0.1666]
+            )
 
         START_HIGHER = self.cfg["env"]["startArmHigher"]
         if START_HIGHER:
@@ -1821,6 +1832,16 @@ class SimToolReal(VecTask):
 
         robot_dof_props = self.gym.get_asset_dof_properties(robot_asset)
 
+        if self.use_franka:
+            from isaacgymenvs.utils.observation_action_utils_sharpa import (
+                FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM,
+            )
+
+            robot_dof_names = self.gym.get_asset_dof_names(robot_asset)
+            assert robot_dof_names == FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM, (
+                f"Unexpected DOF order for franka_right_sharpa:\n{robot_dof_names}\nexpected:\n{FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM}"
+            )
+
         self.arm_hand_dof_lower_limits = []
         self.arm_hand_dof_upper_limits = []
 
@@ -1836,9 +1857,13 @@ class SimToolReal(VecTask):
         )
 
         robot_pose = gymapi.Transform()
+        # The Franka has a shorter reach than the iiwa14, so its base sits closer to
+        # the table (goal-volume coverage 96% at 0.65 vs 74% at 0.8). The table stays
+        # at world y=0 in both cases (table_pose_dy = -robot_base_y below).
+        self.robot_base_y = 0.65 if self.use_franka else 0.8
         robot_pose.p = gymapi.Vec3(
             *get_axis_params(0.0, self.up_axis_idx)
-        ) + gymapi.Vec3(0.0, 0.8, 0)
+        ) + gymapi.Vec3(0.0, self.robot_base_y, 0)
         robot_pose.r = gymapi.Quat(0, 0, 0, 1)
 
         object_assets, object_rb_count, object_shapes_count = (
@@ -1874,7 +1899,10 @@ class SimToolReal(VecTask):
         table_pose = gymapi.Transform()
         table_pose.p = gymapi.Vec3()
         table_pose.p.x = robot_pose.p.x
-        table_pose_dy, table_pose_dz = -0.8, self.cfg["env"]["tableResetZ"]
+        table_pose_dy, table_pose_dz = (
+            -self.robot_base_y,
+            self.cfg["env"]["tableResetZ"],
+        )
         table_pose.p.y = robot_pose.p.y + table_pose_dy
         table_pose.p.z = robot_pose.p.z + table_pose_dz
 
@@ -1918,8 +1946,13 @@ class SimToolReal(VecTask):
         body_names = self.gym.get_asset_rigid_body_names(robot_asset)
         for name in self.fingertips:
             assert name in body_names, f"Finger {name} not found in asset {robot_asset}"
+        # The palm body is the last arm link, which (via collapse_fixed_joints)
+        # absorbs the mount chain and the hand root body.
         has_iiwa14 = "iiwa14_link_7" in body_names
-        assert has_iiwa14, f"iiwa14_link_7 not found in asset {robot_asset}"
+        has_franka = "panda_panda_link7" in body_names
+        assert has_iiwa14 or has_franka, (
+            f"No known palm body (iiwa14_link_7 or panda_panda_link7) found in asset {robot_asset}: {body_names}"
+        )
 
         self.fingertip_handles = [
             self.gym.find_asset_rigid_body_index(robot_asset, name)
@@ -1940,8 +1973,13 @@ class SimToolReal(VecTask):
             self.palm_handle = self.gym.find_asset_rigid_body_index(
                 robot_asset, "iiwa14_link_7"
             )
+        elif has_franka:
+            self.robot_name = "franka"
+            self.palm_handle = self.gym.find_asset_rigid_body_index(
+                robot_asset, "panda_panda_link7"
+            )
         else:
-            raise ValueError(f"iiwa14_link_7 not found in asset {robot_asset}")
+            raise ValueError(f"No known palm body found in asset {robot_asset}")
 
         # this rely on the fact that objects are added right after the arms in terms of create_actor()
         self.object_rb_handles = list(
@@ -2003,7 +2041,10 @@ class SimToolReal(VecTask):
                 segmentation_id,
             )
             populate_dof_properties(
-                robot_dof_props, self.num_arm_dofs, self.num_hand_dofs
+                robot_dof_props,
+                self.num_arm_dofs,
+                self.num_hand_dofs,
+                use_franka=self.use_franka,
             )
 
             self.gym.set_actor_dof_properties(env_ptr, robot_actor, robot_dof_props)
@@ -4434,6 +4475,10 @@ class SimToolReal(VecTask):
         return "left_sharpa" in self.cfg["env"]["asset"]["robot"].lower()
 
     @property
+    def use_franka(self) -> bool:
+        return "franka" in self.cfg["env"]["asset"]["robot"].lower()
+
+    @property
     def hand_moving_average(self) -> float:
         if self.cfg["env"]["handMovingAverageFinal"] is None or not hasattr(
             self, "_tyler_curriculum_scale"
@@ -4479,6 +4524,26 @@ class SimToolReal(VecTask):
 
     def post_physics_step(self):
         self.frame_since_restart += 1
+
+        # Opt-in arm joint-velocity statistics (for sim2real speed-limit checks):
+        # set PRINT_ARM_VEL_STATS=1 to accumulate |qd| of the 7 arm joints and
+        # print max / p99 / p95 per joint every 500 steps.
+        if os.environ.get("PRINT_ARM_VEL_STATS"):
+            arm_vel = self.arm_hand_dof_vel[:, :7].abs()
+            if not hasattr(self, "_arm_vel_samples"):
+                self._arm_vel_samples = []
+            self._arm_vel_samples.append(arm_vel.detach().clone())
+            if self.frame_since_restart % 500 == 0:
+                v = torch.cat(self._arm_vel_samples, dim=0)
+                q = torch.quantile(
+                    v.float(), torch.tensor([0.95, 0.99], device=v.device), dim=0
+                )
+                print(
+                    f"[ARM_VEL_STATS] steps={self.frame_since_restart} samples={v.shape[0]}\n"
+                    f"  max: {[round(x, 3) for x in v.max(dim=0).values.tolist()]}\n"
+                    f"  p99: {[round(x, 3) for x in q[1].tolist()]}\n"
+                    f"  p95: {[round(x, 3) for x in q[0].tolist()]}"
+                )
 
         self.progress_buf += 1
         self.randomize_buf += 1
@@ -5183,12 +5248,18 @@ class SimToolReal(VecTask):
 
         # Turn off self-collisions for adjacent links
         from isaacgymenvs.tasks.simtoolreal.adjacent_links import (
+            FRANKA_RIGHT_SHARPA_LINK_TO_ADJACENT_LINKS,
             LEFT_SHARPA_KUKA_LINK_TO_ADJACENT_LINKS,
             RIGHT_SHARPA_KUKA_LINK_TO_ADJACENT_LINKS,
         )
 
         if self.use_sharpa:
-            if self.use_right_sharpa:
+            if self.use_franka:
+                assert self.use_right_sharpa, (
+                    "Franka asset is only set up with the right SharPa hand"
+                )
+                link_to_adjacent_links = FRANKA_RIGHT_SHARPA_LINK_TO_ADJACENT_LINKS
+            elif self.use_right_sharpa:
                 link_to_adjacent_links = RIGHT_SHARPA_KUKA_LINK_TO_ADJACENT_LINKS
             elif self.use_left_sharpa:
                 link_to_adjacent_links = LEFT_SHARPA_KUKA_LINK_TO_ADJACENT_LINKS

@@ -10,8 +10,17 @@ from termcolor import colored
 # isort: off
 from pathlib import Path
 
-SHARPA_SDK_PATH = Path("/juno/u/tylerlum/Sharpa/SDK/SharpaWaveSDK_4.3.4/python")
-assert SHARPA_SDK_PATH.exists(), f"SHARPA_SDK_PATH: {SHARPA_SDK_PATH} does not exist"
+import os
+
+SHARPA_SDK_PATH = Path(
+    os.environ.get(
+        "SHARPA_SDK_PATH", "/juno/u/tylerlum/Sharpa/SDK/SharpaWaveSDK_4.3.4/python"
+    )
+)
+assert SHARPA_SDK_PATH.exists(), (
+    f"SHARPA_SDK_PATH: {SHARPA_SDK_PATH} does not exist. "
+    "Set the SHARPA_SDK_PATH env var to your SharpaWaveSDK python directory."
+)
 
 import sys
 

@@ -33,10 +33,39 @@ from typing import Tuple
 from torch import Tensor
 
 
-def populate_dof_properties(hand_arm_dof_props, arm_dofs: int, hand_dofs: int) -> None:
+def populate_dof_properties(
+    hand_arm_dof_props, arm_dofs: int, hand_dofs: int, use_franka: bool = False
+) -> None:
     assert len(hand_arm_dof_props["stiffness"]) == arm_dofs + hand_dofs
 
     import numpy as np
+
+    if use_franka:
+        # Franka (FR3) torque limits per spec: 87 Nm (joints 1-4), 12 Nm (joints 5-7).
+        # Stiffness is a first-pass chosen so torque saturates around 0.2 rad of
+        # tracking error; damping follows the same damping-ratio methodology as the
+        # KUKA values below (zeta = 0.3 against approximate reflected rotor inertia).
+        franka_efforts = [87, 87, 87, 87, 12, 12, 12]
+        franka_stiffnesses = [400, 400, 400, 400, 120, 80, 60]
+        franka_armatures = [0.65, 0.65, 0.65, 0.65, 0.18, 0.18, 0.18]
+        franka_damping_ratio = 0.3
+        franka_dampings = [
+            2 * franka_damping_ratio * np.sqrt(k * armature)
+            for k, armature in zip(franka_stiffnesses, franka_armatures)
+        ]
+        assert (
+            len(franka_efforts)
+            == len(franka_stiffnesses)
+            == len(franka_dampings)
+            == arm_dofs
+        )
+
+        hand_arm_dof_props["stiffness"][0:arm_dofs] = franka_stiffnesses
+        hand_arm_dof_props["damping"][0:arm_dofs] = franka_dampings
+        # Not setting armature, same as the KUKA branch below
+        hand_arm_dof_props["effort"][0:arm_dofs] = franka_efforts
+        _populate_hand_dof_properties(hand_arm_dof_props, arm_dofs, hand_dofs)
+        return
 
     kuka_efforts = [300, 300, 300, 300, 300, 300, 300]
     kuka_stiffnesses = [600, 600, 500, 400, 200, 200, 200]
@@ -100,8 +129,13 @@ def populate_dof_properties(hand_arm_dof_props, arm_dofs: int, hand_dofs: int) -
     # Not setting armature matches real KUKA robot behavior
     # hand_arm_dof_props["armature"][0:arm_dofs] = kuka_armatures
     hand_arm_dof_props["effort"][0:arm_dofs] = kuka_efforts
+    _populate_hand_dof_properties(hand_arm_dof_props, arm_dofs, hand_dofs)
 
-    # Assumes hand order
+
+def _populate_hand_dof_properties(
+    hand_arm_dof_props, arm_dofs: int, hand_dofs: int
+) -> None:
+    # Assumes canonical hand order (right_* equivalents for the right hand):
     # ['left_thumb_CMC_FE', 'left_thumb_CMC_AA', 'left_thumb_MCP_FE', 'left_thumb_MCP_AA', 'left_thumb_IP',
     #  'left_index_MCP_FE', 'left_index_MCP_AA', 'left_index_PIP', 'left_index_DIP',
     #  'left_middle_MCP_FE', 'left_middle_MCP_AA', 'left_middle_PIP', 'left_middle_DIP',

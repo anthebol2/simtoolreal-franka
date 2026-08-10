@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import List, Literal, Optional
 
 import numpy as np
 import yourdfpy
@@ -88,6 +89,52 @@ def matrix_to_quaternion_xyzw_scipy(matrix: np.ndarray) -> np.ndarray:
 assert len(JOINT_NAMES_ISAACGYM) == 29, (
     f"len(JOINT_NAMES_ISAACGYM): {len(JOINT_NAMES_ISAACGYM)}, expected: 29"
 )
+
+# Franka Panda + right SharPa (assets/urdf/franka_right_sharpa_description/).
+# Same digit-prefix trick as above to enforce the canonical finger order
+# (thumb, index, middle, ring, pinky) under Isaac Gym's alphabetical DOF sorting.
+# NOTE: the deployment-side helpers in this file (compute_observation, Q_*_LIMITS,
+# PALM_OFFSET_np, ...) still describe the KUKA + left-SharPa robot; they must be
+# generalized before Franka sim2real deployment.
+FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM = [
+    "panda_joint1",
+    "panda_joint2",
+    "panda_joint3",
+    "panda_joint4",
+    "panda_joint5",
+    "panda_joint6",
+    "panda_joint7",
+    "right_1_thumb_CMC_FE",
+    "right_thumb_CMC_AA",
+    "right_thumb_MCP_FE",
+    "right_thumb_MCP_AA",
+    "right_thumb_IP",
+    "right_2_index_MCP_FE",
+    "right_index_MCP_AA",
+    "right_index_PIP",
+    "right_index_DIP",
+    "right_3_middle_MCP_FE",
+    "right_middle_MCP_AA",
+    "right_middle_PIP",
+    "right_middle_DIP",
+    "right_4_ring_MCP_FE",
+    "right_ring_MCP_AA",
+    "right_ring_PIP",
+    "right_ring_DIP",
+    "right_5_pinky_CMC",
+    "right_pinky_MCP_FE",
+    "right_pinky_MCP_AA",
+    "right_pinky_PIP",
+    "right_pinky_DIP",
+]
+assert len(FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM) == 29, (
+    f"len(FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM): {len(FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM)}, expected: 29"
+)
+
+# Palm-center offset for the Franka robot, expressed in the panda_panda_link7 body
+# frame (the palm body after collapse_fixed_joints). Same physical point as
+# PALM_OFFSET_np below, mirrored for the right hand.
+FRANKA_PALM_OFFSET_np = np.array([0.1657, -0.0054, -0.1805])
 
 # Q_LOWER_LIMITS_np = np.array( [-2.9671, -2.0944, -2.9671, -2.0944, -2.9671, -2.0944, -3.0543, -0.1745,
 #         -0.0349,  0.0000,  0.0000, -0.1745, -0.0349,  0.0000,  0.0000,  0.0000,
@@ -229,9 +276,149 @@ OBJECT_KEYPOINT_OFFSETS_np = np.array(
 )
 
 
-def create_urdf_object(
-    robot_name: Literal["iiwa14_left_sharpa_adjusted_restricted"],
-) -> yourdfpy.URDF:
+# Franka arm joint limits (from franka_right_sharpa.urdf; matches FR3/Panda position spec)
+FRANKA_ARM_Q_LOWER_np = np.array(
+    [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
+)
+FRANKA_ARM_Q_UPPER_np = np.array(
+    [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]
+)
+
+# The 22 hand joint limits are identical for the left and right SharPa
+# (verified against both URDFs), so the hand rows are shared below.
+FRANKA_Q_LOWER_LIMITS_np = np.concatenate(
+    [FRANKA_ARM_Q_LOWER_np, Q_LOWER_LIMITS_np[7:]]
+)
+FRANKA_Q_UPPER_LIMITS_np = np.concatenate(
+    [FRANKA_ARM_Q_UPPER_np, Q_UPPER_LIMITS_np[7:]]
+)
+FRANKA_Q_LOWER_LIMITS_restricted_np = FRANKA_Q_LOWER_LIMITS_np.copy()
+FRANKA_Q_LOWER_LIMITS_restricted_np[:7] += np.deg2rad(10.0)
+FRANKA_Q_UPPER_LIMITS_restricted_np = FRANKA_Q_UPPER_LIMITS_np.copy()
+FRANKA_Q_UPPER_LIMITS_restricted_np[:7] -= np.deg2rad(10.0)
+
+FRANKA_T_W_R_np = np.eye(4)
+FRANKA_T_W_R_np[:3, 3] = np.array([0.0, 0.65, 0.0])  # Franka base offset (shorter reach)
+
+
+@dataclass(frozen=True)
+class RobotProfile:
+    """All robot-specific deployment constants in one place.
+
+    The training env (isaacgymenvs/tasks/simtoolreal/env.py) has its own copies of
+    these values; the two must stay in sync for sim2real parity.
+    """
+
+    name: str
+    urdf_name: str  # for create_urdf_object
+    joint_names: List[str]  # 29, Isaac Gym canonical order
+    q_lower: np.ndarray  # (29,)
+    q_upper: np.ndarray  # (29,)
+    q_lower_restricted: np.ndarray  # (29,) arm inset by 10 deg
+    q_upper_restricted: np.ndarray  # (29,)
+    palm_link: str  # FK body used for the palm pose obs
+    palm_offset: np.ndarray  # (3,) palm-center offset in palm_link frame
+    fingertip_links: List[str]  # index, middle, ring, thumb, pinky
+    T_W_R: np.ndarray  # (4,4) robot base pose in world frame
+    home_arm_qpos: np.ndarray  # (7,) HOME pose (startArmHigher baked in)
+    ik_end_link: str  # hand-root link for pytorch_kinematics serial chain
+    ros_arm_ns: str  # ROS topic namespace for the arm ("iiwa", "franka")
+    ros_arm_joint_names: List[str]  # 7 names used in JointState messages
+    arm_vel_limits: np.ndarray  # (7,) real-robot joint speed limits [rad/s]
+
+
+KUKA_LEFT_SHARPA_PROFILE = RobotProfile(
+    name="kuka_left_sharpa",
+    urdf_name="iiwa14_left_sharpa_adjusted_restricted",
+    joint_names=JOINT_NAMES_ISAACGYM,
+    q_lower=Q_LOWER_LIMITS_np,
+    q_upper=Q_UPPER_LIMITS_np,
+    q_lower_restricted=Q_LOWER_LIMITS_restricted_np,
+    q_upper_restricted=Q_UPPER_LIMITS_restricted_np,
+    palm_link="iiwa14_link_7",
+    palm_offset=PALM_OFFSET_np,
+    fingertip_links=[
+        "left_index_DP",
+        "left_middle_DP",
+        "left_ring_DP",
+        "left_thumb_DP",
+        "left_pinky_DP",
+    ],
+    T_W_R=T_W_R_np,
+    home_arm_qpos=np.array(
+        [
+            -1.571,
+            1.571 - np.deg2rad(10),
+            -0.000,
+            1.376 + np.deg2rad(10),
+            -0.000,
+            1.485,
+            1.308,
+        ]
+    ),
+    ik_end_link="left_hand_C_MC",
+    ros_arm_ns="iiwa",
+    ros_arm_joint_names=[f"iiwa_joint_{i}" for i in range(1, 8)],
+    # iiwa14 joint speed spec (deg/s: 85, 85, 100, 75, 130, 135, 135)
+    arm_vel_limits=np.deg2rad(np.array([85, 85, 100, 75, 130, 135, 135])),
+)
+
+FRANKA_RIGHT_SHARPA_PROFILE = RobotProfile(
+    name="franka_right_sharpa",
+    urdf_name="franka_right_sharpa",
+    joint_names=FRANKA_RIGHT_SHARPA_JOINT_NAMES_ISAACGYM,
+    q_lower=FRANKA_Q_LOWER_LIMITS_np,
+    q_upper=FRANKA_Q_UPPER_LIMITS_np,
+    q_lower_restricted=FRANKA_Q_LOWER_LIMITS_restricted_np,
+    q_upper_restricted=FRANKA_Q_UPPER_LIMITS_restricted_np,
+    palm_link="panda_panda_link7",
+    palm_offset=FRANKA_PALM_OFFSET_np,
+    fingertip_links=[
+        "right_index_DP",
+        "right_middle_DP",
+        "right_ring_DP",
+        "right_thumb_DP",
+        "right_pinky_DP",
+    ],
+    T_W_R=FRANKA_T_W_R_np,
+    # Training default pose (env.py use_franka branch) with the same
+    # startArmHigher offsets baked in as the KUKA HOME convention
+    home_arm_qpos=np.array(
+        [
+            -0.6242,
+            -0.2527 - np.deg2rad(10),
+            -0.7214,
+            -1.2850 + np.deg2rad(10),
+            -0.1649,
+            0.9929,
+            0.1666,
+        ]
+    ),
+    ik_end_link="right_hand_C_MC",
+    ros_arm_ns="franka",
+    ros_arm_joint_names=[f"panda_joint{i}" for i in range(1, 8)],
+    # Conservative Panda joint speed limits (FR3 wrists allow more; keep the
+    # tighter values unless the hardware is confirmed to be an FR3)
+    arm_vel_limits=np.array([2.175, 2.175, 2.175, 2.175, 2.61, 2.61, 2.61]),
+)
+
+ROBOT_PROFILES = {
+    p.name: p for p in [KUKA_LEFT_SHARPA_PROFILE, FRANKA_RIGHT_SHARPA_PROFILE]
+}
+
+
+def get_robot_profile(name: str) -> RobotProfile:
+    assert name in ROBOT_PROFILES, (
+        f"Unknown robot profile: {name}, available: {list(ROBOT_PROFILES.keys())}"
+    )
+    return ROBOT_PROFILES[name]
+
+
+def get_urdf_path(
+    robot_name: Literal[
+        "iiwa14_left_sharpa_adjusted_restricted", "franka_right_sharpa"
+    ],
+) -> Path:
     asset_root = Path(__file__).parent / "../../assets"
     assert asset_root.exists(), f"Asset root {asset_root} does not exist"
     if robot_name == "iiwa14_left_sharpa_adjusted_restricted":
@@ -239,10 +426,22 @@ def create_urdf_object(
             asset_root
             / "urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
         )
+    elif robot_name == "franka_right_sharpa":
+        urdf_path = (
+            asset_root / "urdf/franka_right_sharpa_description/franka_right_sharpa.urdf"
+        )
     else:
         raise ValueError(f"Invalid robot name: {robot_name}")
     assert urdf_path.exists(), f"URDF file {urdf_path} does not exist"
-    return yourdfpy.URDF.load(urdf_path)
+    return urdf_path
+
+
+def create_urdf_object(
+    robot_name: Literal[
+        "iiwa14_left_sharpa_adjusted_restricted", "franka_right_sharpa"
+    ],
+) -> yourdfpy.URDF:
+    return yourdfpy.URDF.load(get_urdf_path(robot_name))
 
 
 def compute_fk_dict(
@@ -272,7 +471,12 @@ def compute_observation(
     object_scales: np.ndarray,
     urdf: yourdfpy.URDF,
     obs_list: list[str],
+    profile: Optional[RobotProfile] = None,
 ) -> np.ndarray:
+    # Default preserves the original KUKA + left-SharPa behavior; the
+    # profile-vs-urdf joint-name assert below catches any mismatch loudly.
+    if profile is None:
+        profile = KUKA_LEFT_SHARPA_PROFILE
     # Assume q and qd are in the order of JOINT_NAMES_ISAACGYM
     # object_pose, goal_object_pose are the pose of the object and goal in world frame (xyz_xyzw)
     # object_scales is the scale of the object [x, y, z]
@@ -289,8 +493,8 @@ def compute_observation(
     assert prev_action_targets.shape == (N, J), (
         f"prev_action_targets.shape: {prev_action_targets.shape}, expected: (N, J)"
     )
-    q_lower_limits = Q_LOWER_LIMITS_np
-    q_upper_limits = Q_UPPER_LIMITS_np
+    q_lower_limits = profile.q_lower
+    q_upper_limits = profile.q_upper
     assert q_lower_limits.shape == (J,), (
         f"q_lower_limits.shape: {q_lower_limits.shape}, expected: (J,)"
     )
@@ -321,22 +525,18 @@ def compute_observation(
 
     # FK to get link poses
     N_FINGERTIPS = 5
-    assert JOINT_NAMES_ISAACGYM == urdf.actuated_joint_names, (
-        f"JOINT_NAMES_ISAACGYM: {JOINT_NAMES_ISAACGYM} != urdf.actuated_joint_names: {urdf.actuated_joint_names}"
+    assert profile.joint_names == urdf.actuated_joint_names, (
+        f"profile ({profile.name}) joint_names: {profile.joint_names} != urdf.actuated_joint_names: {urdf.actuated_joint_names}"
     )
-    LINK_NAMES = ["iiwa14_link_7"] + [
-        "left_index_DP",
-        "left_middle_DP",
-        "left_ring_DP",
-        "left_thumb_DP",
-        "left_pinky_DP",
-    ]
+    LINK_NAMES = [profile.palm_link] + profile.fingertip_links
     fk_dict = compute_fk_dict(urdf=urdf, q=q, link_names=LINK_NAMES)
     t3 = time.time()
-    palm_center_pos, palm_rot = _compute_palm_center_pos_and_rot(fk_dict=fk_dict)
+    palm_center_pos, palm_rot = _compute_palm_center_pos_and_rot(
+        fk_dict=fk_dict, profile=profile
+    )
     t4 = time.time()
     fingertip_positions_with_offsets = _compute_fingertip_positions_with_offsets(
-        fk_dict=fk_dict
+        fk_dict=fk_dict, profile=profile
     )
     t5 = time.time()
     fingertip_rel_pos = fingertip_positions_with_offsets - palm_center_pos[:, None]
@@ -449,15 +649,18 @@ def compute_joint_pos_targets(
     arm_moving_average: float,
     hand_dof_speed_scale: float,
     dt: float,
+    profile: Optional[RobotProfile] = None,
 ) -> np.ndarray:
+    if profile is None:
+        profile = KUKA_LEFT_SHARPA_PROFILE
     N = actions.shape[0]
     J = 29
     assert actions.shape == (N, J), f"actions.shape: {actions.shape}, expected: (N, J)"
     assert prev_targets.shape == (N, J), (
         f"prev_targets.shape: {prev_targets.shape}, expected: (N, J)"
     )
-    q_lower_limits = Q_LOWER_LIMITS_np
-    q_upper_limits = Q_UPPER_LIMITS_np
+    q_lower_limits = profile.q_lower
+    q_upper_limits = profile.q_upper
     assert q_lower_limits.shape == (J,), (
         f"q_lower_limits.shape: {q_lower_limits.shape}, expected: (J,)"
     )
@@ -506,14 +709,17 @@ def compute_joint_pos_targets(
 
 def _compute_palm_center_pos_and_rot(
     fk_dict: dict[str, np.ndarray],
+    profile: Optional[RobotProfile] = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     import time
 
+    if profile is None:
+        profile = KUKA_LEFT_SHARPA_PROFILE
     t00 = time.time()
-    T_R_Ps = fk_dict["iiwa14_link_7"]
+    T_R_Ps = fk_dict[profile.palm_link]
     N = T_R_Ps.shape[0]
     t01 = time.time()
-    T_W_Rs = T_W_R_np[None]
+    T_W_Rs = profile.T_W_R[None]
     assert T_W_Rs.shape == (1, 4, 4), (
         f"T_W_Rs.shape: {T_W_Rs.shape}, expected: (1, 4, 4)"
     )
@@ -522,7 +728,7 @@ def _compute_palm_center_pos_and_rot(
     T_W_Ps = T_W_Rs @ T_R_Ps
     t03 = time.time()
 
-    palm_offset = PALM_OFFSET_np[None].repeat(N, axis=0)
+    palm_offset = profile.palm_offset[None].repeat(N, axis=0)
     t04 = time.time()
     assert palm_offset.shape == (N, 3), (
         f"palm_offset.shape: {palm_offset.shape}, expected: (N, 3)"
@@ -595,25 +801,19 @@ def _compute_palm_center_pos_and_rot(
 
 def _compute_fingertip_positions_with_offsets(
     fk_dict: dict[str, np.ndarray],
+    profile: Optional[RobotProfile] = None,
 ) -> np.ndarray:
+    if profile is None:
+        profile = KUKA_LEFT_SHARPA_PROFILE
     N_FINGERTIPS = 5
-    T_R_F_list = [
-        fk_dict[name]
-        for name in [
-            "left_index_DP",
-            "left_middle_DP",
-            "left_ring_DP",
-            "left_thumb_DP",
-            "left_pinky_DP",
-        ]
-    ]
+    T_R_F_list = [fk_dict[name] for name in profile.fingertip_links]
     T_R_Fs = np.stack(T_R_F_list, axis=1)
     N = T_R_Fs.shape[0]
     assert T_R_Fs.shape == (N, N_FINGERTIPS, 4, 4), (
         f"T_R_Fs.shape: {T_R_Fs.shape}, expected: (N, N_FINGERTIPS, 4, 4)"
     )
 
-    T_W_Rs = T_W_R_np[None, None]
+    T_W_Rs = profile.T_W_R[None, None]
     assert T_W_Rs.shape == (1, 1, 4, 4), (
         f"T_W_Rs.shape: {T_W_Rs.shape}, expected: (1, 1, 4, 4)"
     )

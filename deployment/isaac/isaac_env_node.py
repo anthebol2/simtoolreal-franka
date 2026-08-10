@@ -30,9 +30,11 @@ HAND_DOF_SPEED_SCALE = 2.5
 
 PUBLISH_GOAL_OBJECT_POSE = False
 
-T_W_R = np.eye(4)
-T_W_R[:3, 3] = np.array([0.0, 0.8, 0.0])
+from isaacgymenvs.utils.observation_action_utils_sharpa import get_robot_profile
 
+# Robot selection: overridden by the --robot CLI arg in main()
+PROFILE = get_robot_profile("franka_right_sharpa")
+T_W_R = PROFILE.T_W_R
 T_R_W = np.linalg.inv(T_W_R)
 
 
@@ -66,7 +68,10 @@ class IsaacEnvNode:
         self.latest_sharpa_joint_cmd = None
 
         self.iiwa_cmd_sub = rospy.Subscriber(
-            "/iiwa/joint_cmd", JointState, self._iiwa_joint_cmd_callback, queue_size=1
+            f"/{PROFILE.ros_arm_ns}/joint_cmd",
+            JointState,
+            self._iiwa_joint_cmd_callback,
+            queue_size=1,
         )
         self.sharpa_cmd_sub = rospy.Subscriber(
             "/sharpa/joint_cmd",
@@ -75,7 +80,9 @@ class IsaacEnvNode:
             queue_size=1,
         )
 
-        self.iiwa_pub = rospy.Publisher("/iiwa/joint_states", JointState, queue_size=1)
+        self.iiwa_pub = rospy.Publisher(
+            f"/{PROFILE.ros_arm_ns}/joint_states", JointState, queue_size=1
+        )
         self.sharpa_pub = rospy.Publisher(
             "/sharpa/joint_states", JointState, queue_size=1
         )
@@ -270,9 +277,16 @@ class IsaacEnvNodeArgs:
     headless: bool = False
     """Run IsaacGym without rendering."""
 
+    robot: str = "franka_right_sharpa"
+    """Robot profile name: franka_right_sharpa or kuka_left_sharpa."""
+
 
 def main():
+    global PROFILE, T_W_R, T_R_W
     args: IsaacEnvNodeArgs = tyro.cli(IsaacEnvNodeArgs)
+    PROFILE = get_robot_profile(args.robot)
+    T_W_R = PROFILE.T_W_R
+    T_R_W = np.linalg.inv(T_W_R)
 
     CONTROL_DT = 1.0 / 60.0
     SUBSTEPS = 2

@@ -17,10 +17,16 @@ from termcolor import colored
 from viser.extras import ViserUrdf
 
 from dextoolbench.metadata import ALL_OBJECT_NAMES
+from isaacgymenvs.utils.observation_action_utils_sharpa import (
+    RobotProfile,
+    get_robot_profile,
+    get_urdf_path,
+)
 from isaacgymenvs.utils.utils import get_repo_root_dir
 
-T_W_R = np.eye(4)
-T_W_R[:3, 3] = np.array([0.0, 0.8, 0.0])
+# Robot selection: overridden by the --robot CLI arg in main()
+PROFILE: RobotProfile = get_robot_profile("franka_right_sharpa")
+T_W_R = PROFILE.T_W_R
 
 
 def warn(message: str):
@@ -171,7 +177,7 @@ class VisualizationNode:
 
     def initialize_ros_subscribers(self):
         self.iiwa_sub = rospy.Subscriber(
-            "/iiwa/joint_states",
+            f"/{PROFILE.ros_arm_ns}/joint_states",
             JointState,
             self.iiwa_joint_state_callback,
             queue_size=1,
@@ -183,7 +189,10 @@ class VisualizationNode:
             queue_size=1,
         )
         self.iiwa_cmd_sub = rospy.Subscriber(
-            "/iiwa/joint_cmd", JointState, self.iiwa_joint_cmd_callback, queue_size=1
+            f"/{PROFILE.ros_arm_ns}/joint_cmd",
+            JointState,
+            self.iiwa_joint_cmd_callback,
+            queue_size=1,
         )
         self.sharpa_cmd_sub = rospy.Subscriber(
             "/sharpa/joint_cmd",
@@ -209,21 +218,18 @@ class VisualizationNode:
 
         # Create a real robot (simulating real robot) and a command robot (visualizing commands)
         # Load robot URDF with a fixed base
-        robot_urdf_path = (
-            get_repo_root_dir()
-            / "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
-        )
-        assert robot_urdf_path.exists(), f"robot_urdf_path not found: {robot_urdf_path}"
+        robot_urdf_path = get_urdf_path(PROFILE.urdf_name)
 
+        robot_base_pos = tuple(PROFILE.T_W_R[:3, 3])
         SERVER.scene.add_frame(
             "/robot/state",
-            position=(0, 0.8, 0),
+            position=robot_base_pos,
             wxyz=(1, 0, 0, 0),
             show_axes=False,
         )
         SERVER.scene.add_frame(
             "/robot/cmd",
-            position=(0, 0.8, 0),
+            position=robot_base_pos,
             wxyz=(1, 0, 0, 0),
             show_axes=False,
         )
@@ -462,9 +468,15 @@ class VisualizationNodeArgs:
     object_name: str = "claw_hammer"
     f"""The name of the object to visualize. Options: {", ".join(ALL_OBJECT_NAMES)}"""
 
+    robot: str = "franka_right_sharpa"
+    """Robot profile name: franka_right_sharpa or kuka_left_sharpa."""
+
 
 def main():
+    global PROFILE, T_W_R
     args: VisualizationNodeArgs = tyro.cli(VisualizationNodeArgs)
+    PROFILE = get_robot_profile(args.robot)
+    T_W_R = PROFILE.T_W_R
     try:
         # Create and run the VisualizationNode
         node = VisualizationNode(object_name=args.object_name)

@@ -1,3 +1,58 @@
+# Franka Panda + right SharPa (assets/urdf/franka_right_sharpa_description/franka_right_sharpa.urdf).
+# Body names after Isaac Gym's collapse_fixed_joints: "panda" is the base (absorbs
+# panda_panda_link0), and panda_panda_link7 absorbs panda_link8 + connector +
+# wrist_interface + right_hand_C_MC, so the hand attaches directly to it — the same
+# merge structure as the KUKA assets below. Hand-internal adjacency mirrors
+# LEFT_SHARPA_KUKA_LINK_TO_ADJACENT_LINKS (identical hand geometry, mirrored).
+FRANKA_RIGHT_SHARPA_LINK_TO_ADJACENT_LINKS = {
+    "panda": ["panda_panda_link1"],
+    "panda_panda_link1": ["panda", "panda_panda_link2"],
+    "panda_panda_link2": ["panda_panda_link1", "panda_panda_link3"],
+    "panda_panda_link3": ["panda_panda_link2", "panda_panda_link4"],
+    "panda_panda_link4": ["panda_panda_link3", "panda_panda_link5"],
+    "panda_panda_link5": ["panda_panda_link4", "panda_panda_link6"],
+    "panda_panda_link6": ["panda_panda_link5", "panda_panda_link7"],
+    "panda_panda_link7": [
+        "panda_panda_link6",
+        "right_thumb_CMC_VL",
+        "right_thumb_MC",
+        "right_index_MCP_VL",
+        "right_index_PP",
+        "right_middle_MCP_VL",
+        "right_middle_PP",
+        "right_ring_MCP_VL",
+        "right_ring_PP",
+        "right_pinky_MC",
+    ],
+    "right_index_MCP_VL": ["panda_panda_link7", "right_index_PP"],
+    "right_index_PP": ["panda_panda_link7", "right_index_MCP_VL", "right_index_MP"],
+    "right_index_MP": ["right_index_PP", "right_index_DP"],
+    "right_index_DP": ["right_index_MP"],
+    "right_middle_MCP_VL": ["panda_panda_link7", "right_middle_PP"],
+    "right_middle_PP": ["panda_panda_link7", "right_middle_MCP_VL", "right_middle_MP"],
+    "right_middle_MP": ["right_middle_PP", "right_middle_DP"],
+    "right_middle_DP": ["right_middle_MP"],
+    "right_pinky_MC": ["panda_panda_link7", "right_pinky_MCP_VL", "right_pinky_PP"],
+    "right_pinky_MCP_VL": ["right_pinky_MC", "right_pinky_PP"],
+    "right_pinky_PP": ["right_pinky_MC", "right_pinky_MCP_VL", "right_pinky_MP"],
+    "right_pinky_MP": ["right_pinky_PP", "right_pinky_DP"],
+    "right_pinky_DP": ["right_pinky_MP"],
+    "right_ring_MCP_VL": ["panda_panda_link7", "right_ring_PP"],
+    "right_ring_PP": ["panda_panda_link7", "right_ring_MCP_VL", "right_ring_MP"],
+    "right_ring_MP": ["right_ring_PP", "right_ring_DP"],
+    "right_ring_DP": ["right_ring_MP"],
+    "right_thumb_CMC_VL": ["panda_panda_link7", "right_thumb_MC"],
+    "right_thumb_MC": [
+        "panda_panda_link7",
+        "right_thumb_CMC_VL",
+        "right_thumb_MCP_VL",
+        "right_thumb_PP",
+    ],
+    "right_thumb_MCP_VL": ["right_thumb_MC", "right_thumb_PP"],
+    "right_thumb_PP": ["right_thumb_MC", "right_thumb_MCP_VL", "right_thumb_DP"],
+    "right_thumb_DP": ["right_thumb_PP"],
+}
+
 RIGHT_SHARPA_KUKA_LINK_TO_ADJACENT_LINKS = {
     "iiwa14_link_0": ["iiwa14_link_1"],
     "iiwa14_link_1": ["iiwa14_link_0", "iiwa14_link_2"],

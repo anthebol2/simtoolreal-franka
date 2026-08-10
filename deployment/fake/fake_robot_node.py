@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import argparse
 import time
 from typing import Literal
 
@@ -7,10 +8,13 @@ import rospy
 from sensor_msgs.msg import JointState
 from termcolor import colored
 
+from isaacgymenvs.utils.observation_action_utils_sharpa import get_robot_profile
+
 NUM_ARM_JOINTS = 7
 NUM_HAND_JOINTS = 22
 
-DEFAULT_ARM_Q = np.array([-1.571, 1.571, -0.000, 1.376, -0.000, 1.485, 1.308])
+# Robot selection: overridden by the --robot CLI arg in main()
+PROFILE = get_robot_profile("franka_right_sharpa")
 
 DEFAULT_HAND_Q = np.zeros(22)
 
@@ -46,12 +50,18 @@ class FakeRobotNode:
         self.sharpa_joint_cmd = None
 
         # Publisher and subscriber
-        self.iiwa_pub = rospy.Publisher("/iiwa/joint_states", JointState, queue_size=1)
+        arm_ns = PROFILE.ros_arm_ns
+        self.iiwa_pub = rospy.Publisher(
+            f"/{arm_ns}/joint_states", JointState, queue_size=1
+        )
         self.sharpa_pub = rospy.Publisher(
             "/sharpa/joint_states", JointState, queue_size=1
         )
         self.iiwa_cmd_sub = rospy.Subscriber(
-            "/iiwa/joint_cmd", JointState, self.iiwa_joint_cmd_callback, queue_size=1
+            f"/{arm_ns}/joint_cmd",
+            JointState,
+            self.iiwa_joint_cmd_callback,
+            queue_size=1,
         )
         self.sharpa_cmd_sub = rospy.Subscriber(
             "/sharpa/joint_cmd",
@@ -61,7 +71,7 @@ class FakeRobotNode:
         )
 
         # State
-        self.iiwa_joint_q = DEFAULT_ARM_Q
+        self.iiwa_joint_q = PROFILE.home_arm_qpos.copy()
         self.sharpa_joint_q = DEFAULT_HAND_Q
         self.iiwa_joint_qd = np.zeros(NUM_ARM_JOINTS)
         self.sharpa_joint_qd = np.zeros(NUM_HAND_JOINTS)
@@ -134,7 +144,7 @@ class FakeRobotNode:
         """Publish the current joint states from PyBullet."""
         iiwa_msg = JointState()
         iiwa_msg.header.stamp = rospy.Time.now()
-        iiwa_msg.name = ["iiwa_joint_" + str(i) for i in range(NUM_ARM_JOINTS)]
+        iiwa_msg.name = list(PROFILE.ros_arm_joint_names)
         iiwa_msg.position = self.iiwa_joint_q.tolist()
         iiwa_msg.velocity = self.iiwa_joint_qd.tolist()
         self.iiwa_pub.publish(iiwa_msg)
@@ -192,6 +202,14 @@ class FakeRobotNode:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--robot",
+        default="franka_right_sharpa",
+        choices=["franka_right_sharpa", "kuka_left_sharpa"],
+    )
+    cli_args = parser.parse_args()
+    PROFILE = get_robot_profile(cli_args.robot)
     try:
         # Create and run the FakeRobotNode
         node = FakeRobotNode()

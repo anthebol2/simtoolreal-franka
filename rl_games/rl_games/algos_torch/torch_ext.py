@@ -71,10 +71,13 @@ def safe_filesystem_op(func, *args, **kwargs):
     raise RuntimeError(f'Could not execute {func}, give up after {num_attempts} attempts...')
 
 def safe_symlink(src, dst):
-    try:
+    dst_dir = os.path.dirname(dst)
+    if dst_dir:
+        safe_filesystem_op(os.makedirs, dst_dir, exist_ok=True)
+    # lexists also catches dangling symlinks; on the first best-save neither the
+    # symlink nor its parent dir exists yet
+    if os.path.lexists(dst):
         safe_filesystem_op(os.remove, dst)
-    except (FileExistsError, RuntimeError):
-        pass
     safe_filesystem_op(os.symlink, src, dst)
 
 def safe_save(state, filename):

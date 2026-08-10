@@ -21,22 +21,30 @@ from dextoolbench.objects import (
     NAME_TO_OBJECT,
 )
 from isaacgymenvs.utils.observation_action_utils_sharpa import (
-    Q_LOWER_LIMITS_restricted_np as Q_LOWER_LIMITS_np,
-)
-from isaacgymenvs.utils.observation_action_utils_sharpa import (
-    Q_UPPER_LIMITS_restricted_np as Q_UPPER_LIMITS_np,
-)
-from isaacgymenvs.utils.observation_action_utils_sharpa import (
+    RobotProfile,
     compute_joint_pos_targets,
     compute_observation,
     create_urdf_object,
+    get_robot_profile,
+    get_urdf_path,
 )
 
 FORCE_FIXED_ORIENTATION = False
 
+# Robot selection: set via the --robot CLI arg in main() (set_robot_profile).
+# Targets are clamped to the RESTRICTED limits (arm inset by 10 deg) on hardware.
+PROFILE: RobotProfile = get_robot_profile("franka_right_sharpa")
+T_W_R = PROFILE.T_W_R
+Q_LOWER_LIMITS_np = PROFILE.q_lower_restricted
+Q_UPPER_LIMITS_np = PROFILE.q_upper_restricted
 
-T_W_R = np.eye(4)
-T_W_R[:3, 3] = np.array([0.0, 0.8, 0.0])
+
+def set_robot_profile(name: str) -> None:
+    global PROFILE, T_W_R, Q_LOWER_LIMITS_np, Q_UPPER_LIMITS_np
+    PROFILE = get_robot_profile(name)
+    T_W_R = PROFILE.T_W_R
+    Q_LOWER_LIMITS_np = PROFILE.q_lower_restricted
+    Q_UPPER_LIMITS_np = PROFILE.q_upper_restricted
 
 
 def xyzw_to_wxyz(xyzw: np.ndarray) -> np.ndarray:
@@ -259,9 +267,10 @@ class RLPolicyNode:
             self.object_pose_history: list[np.ndarray] = []
             self.goal_object_pose_history: list[np.ndarray] = []
 
-        # Publisher for iiwa and sharpa joint commands
+        # Publisher for arm and sharpa joint commands
+        # (attribute names kept as iiwa_* for minimal diff; topics come from PROFILE)
         self.iiwa_joint_cmd_pub = rospy.Publisher(
-            "/iiwa/joint_cmd", JointState, queue_size=1
+            f"/{PROFILE.ros_arm_ns}/joint_cmd", JointState, queue_size=1
         )
         self.sharpa_joint_cmd_pub = rospy.Publisher(
             "/sharpa/joint_cmd", JointState, queue_size=1
@@ -287,7 +296,7 @@ class RLPolicyNode:
             queue_size=1,
         )
         self.iiwa_joint_state_sub = rospy.Subscriber(
-            "/iiwa/joint_states",
+            f"/{PROFILE.ros_arm_ns}/joint_states",
             JointState,
             self.iiwa_joint_state_callback,
             queue_size=1,
@@ -327,8 +336,7 @@ class RLPolicyNode:
         self.control_dt = 1.0 / 60
 
         # Set up chain
-        robot_name = "iiwa14_left_sharpa_adjusted_restricted"
-        self.urdf_object = create_urdf_object(robot_name=robot_name)
+        self.urdf_object = create_urdf_object(robot_name=PROFILE.urdf_name)
 
         # State: prev_targets
         self.prev_targets = None
@@ -439,6 +447,7 @@ class RLPolicyNode:
                 object_scales=self.object_scales[None],
                 urdf=self.urdf_object,
                 obs_list=self.obs_list,
+                profile=PROFILE,
             )
             observation = torch.from_numpy(observation).float().to(self.device)
         assert_equals(
@@ -511,15 +520,7 @@ class RLPolicyNode:
         iiwa_msg = JointState()
         iiwa_msg.header.stamp = rospy.Time.now()
         iiwa_msg.header.frame_id = ""
-        iiwa_msg.name = [
-            "iiwa_joint_1",
-            "iiwa_joint_2",
-            "iiwa_joint_3",
-            "iiwa_joint_4",
-            "iiwa_joint_5",
-            "iiwa_joint_6",
-            "iiwa_joint_7",
-        ]
+        iiwa_msg.name = list(PROFILE.ros_arm_joint_names)
         iiwa_msg.position = joint_pos_targets[:7].tolist()
         self.iiwa_joint_cmd_pub.publish(iiwa_msg)
         sharpa_msg = JointState()
@@ -569,21 +570,13 @@ class RLPolicyNode:
         # Load PK chain for fk and jacobian for ik
         import pytorch_kinematics as pk
 
-        from isaacgymenvs.utils.utils import get_repo_root_dir
-
-        KUKA_SHARPA_URDF_PATH = (
-            get_repo_root_dir()
-            / "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
-        )
-        assert KUKA_SHARPA_URDF_PATH.exists(), (
-            f"KUKA_SHARPA_URDF_PATH not found: {KUKA_SHARPA_URDF_PATH}"
-        )
-        with open(KUKA_SHARPA_URDF_PATH, "rb") as f:
+        ROBOT_URDF_PATH = get_urdf_path(PROFILE.urdf_name)
+        with open(ROBOT_URDF_PATH, "rb") as f:
             urdf_str = f.read()
         DEVICE = "cpu"
         self.arm_pk_chain = pk.build_serial_chain_from_urdf(
             urdf_str,
-            end_link_name="left_hand_C_MC",
+            end_link_name=PROFILE.ik_end_link,
         ).to(device=DEVICE)
 
         # Store the hand target when the object was lifted
@@ -892,57 +885,44 @@ class RLPolicyNode:
         _table_viser = ViserUrdf(SERVER, TABLE_URDF_PATH, root_node_name="/table")
 
         # Load robot
-        KUKA_SHARPA_URDF_PATH = (
-            get_repo_root_dir()
-            / "assets/urdf/kuka_sharpa_description/iiwa14_left_sharpa_adjusted_restricted.urdf"
-        )
-        assert KUKA_SHARPA_URDF_PATH.exists(), (
-            f"KUKA_SHARPA_URDF_PATH not found: {KUKA_SHARPA_URDF_PATH}"
-        )
+        ROBOT_URDF_PATH = get_urdf_path(PROFILE.urdf_name)
         _kuka_sharpa_frame = SERVER.scene.add_frame(
             "/robot/state",
             show_axes=True,
             axes_length=AXES_LENGTH,
             axes_radius=AXES_RADIUS,
-            position=(0, 0.8, 0),
+            position=tuple(PROFILE.T_W_R[:3, 3]),
             wxyz=(1, 0, 0, 0),
         )
         kuka_sharpa_viser = ViserUrdf(
-            SERVER, KUKA_SHARPA_URDF_PATH, root_node_name="/robot/state"
-        )
-        HOME_JOINT_POS_IIWA = np.array(
-            [
-                -1.571,
-                1.571 - np.deg2rad(10),
-                -0.000,
-                1.376 + np.deg2rad(10),
-                -0.000,
-                1.485,
-                1.308,
-            ]
+            SERVER, ROBOT_URDF_PATH, root_node_name="/robot/state"
         )
         HOME_JOINT_POS_SHARPA = np.zeros(22)
-        HOME_JOINT_POS = np.concatenate([HOME_JOINT_POS_IIWA, HOME_JOINT_POS_SHARPA])
+        HOME_JOINT_POS = np.concatenate(
+            [PROFILE.home_arm_qpos, HOME_JOINT_POS_SHARPA]
+        )
         kuka_sharpa_viser.update_cfg(HOME_JOINT_POS)
 
-        # Load floating hand
-        SHARPA_URDF_PATH = (
-            get_repo_root_dir()
-            / "assets/urdf/left_sharpa_ha4/left_sharpa_ha4_v2_1_adjusted_restricted.urdf"
-        )
-        assert SHARPA_URDF_PATH.exists(), (
-            f"SHARPA_URDF_PATH not found: {SHARPA_URDF_PATH}"
-        )
-        sharpa_frame = SERVER.scene.add_frame(
-            "/sharpa",
-            show_axes=True,
-            axes_length=AXES_LENGTH,
-            axes_radius=AXES_RADIUS,
-            position=(100, 0, 0),
-            wxyz=(1, 0, 0, 0),
-        )
-        sharpa_viser = ViserUrdf(SERVER, SHARPA_URDF_PATH, root_node_name="/sharpa")
-        sharpa_viser.update_cfg(HOME_JOINT_POS_SHARPA)
+        # Load floating hand (standalone hand URDF only exists for the left hand)
+        sharpa_viser = None
+        if PROFILE.name == "kuka_left_sharpa":
+            SHARPA_URDF_PATH = (
+                get_repo_root_dir()
+                / "assets/urdf/left_sharpa_ha4/left_sharpa_ha4_v2_1_adjusted_restricted.urdf"
+            )
+            assert SHARPA_URDF_PATH.exists(), (
+                f"SHARPA_URDF_PATH not found: {SHARPA_URDF_PATH}"
+            )
+            sharpa_frame = SERVER.scene.add_frame(
+                "/sharpa",
+                show_axes=True,
+                axes_length=AXES_LENGTH,
+                axes_radius=AXES_RADIUS,
+                position=(100, 0, 0),
+                wxyz=(1, 0, 0, 0),
+            )
+            sharpa_viser = ViserUrdf(SERVER, SHARPA_URDF_PATH, root_node_name="/sharpa")
+            sharpa_viser.update_cfg(HOME_JOINT_POS_SHARPA)
 
         # Plot the joint targets and limits
         joint_names = kuka_sharpa_viser._urdf.actuated_joint_names
@@ -1050,7 +1030,8 @@ class RLPolicyNode:
                     f"q_target.shape: {q_target.shape}, expected: (29,)"
                 )
                 kuka_sharpa_viser.update_cfg(q_target)
-                sharpa_viser.update_cfg(q_target[7:])
+                if sharpa_viser is not None:
+                    sharpa_viser.update_cfg(q_target[7:])
 
                 # Update floating hand position
                 T_W_P_using_lifted_object_pose = T_W_Ps_using_lifted_object_pose[i]
@@ -1130,6 +1111,7 @@ class RLPolicyNode:
                 arm_moving_average=DUMMY_ARM_MOVING_AVERAGE,
                 hand_dof_speed_scale=DUMMY_HAND_DOF_SPEED_SCALE,
                 dt=DUMMY_DT,
+                profile=PROFILE,
             )
 
             # We do not actually use the joint pos targets computed by the policy, we use the actual joint states so it doesn't move
@@ -1190,6 +1172,7 @@ class RLPolicyNode:
                 arm_moving_average=self.arm_moving_average,
                 hand_dof_speed_scale=self.hand_dof_speed_scale,
                 dt=DT,
+                profile=PROFILE,
             )
             assert_equals(joint_pos_targets.shape, (1, self.num_actions))
 
@@ -1366,7 +1349,7 @@ class RLPolicyNode:
 
         T = len(self.time_history)
         robot_root_states_array = np.zeros((T, 13))
-        robot_root_states_array[:, 1] = 0.8
+        robot_root_states_array[:, :3] = PROFILE.T_W_R[:3, 3][None]
         robot_root_states_array[:, 6] = 1.0  # quaternion xyzw has w=1
         object_root_states_array = np.zeros((T, 13))
         object_root_states_array[:, :7] = np.array(self.object_pose_history)
@@ -1397,37 +1380,7 @@ class RLPolicyNode:
             f"time_array.shape: {time_array.shape}, expected: (T,)"
         )
 
-        JOINT_NAMES = [
-            "iiwa14_joint_1",
-            "iiwa14_joint_2",
-            "iiwa14_joint_3",
-            "iiwa14_joint_4",
-            "iiwa14_joint_5",
-            "iiwa14_joint_6",
-            "iiwa14_joint_7",
-            "left_1_thumb_CMC_FE",
-            "left_thumb_CMC_AA",
-            "left_thumb_MCP_FE",
-            "left_thumb_MCP_AA",
-            "left_thumb_IP",
-            "left_2_index_MCP_FE",
-            "left_index_MCP_AA",
-            "left_index_PIP",
-            "left_index_DIP",
-            "left_3_middle_MCP_FE",
-            "left_middle_MCP_AA",
-            "left_middle_PIP",
-            "left_middle_DIP",
-            "left_4_ring_MCP_FE",
-            "left_ring_MCP_AA",
-            "left_ring_PIP",
-            "left_ring_DIP",
-            "left_5_pinky_CMC",
-            "left_pinky_MCP_FE",
-            "left_pinky_MCP_AA",
-            "left_pinky_PIP",
-            "left_pinky_DIP",
-        ]
+        JOINT_NAMES = list(PROFILE.joint_names)
 
         from recorded_data import RecordedData
 
@@ -1453,9 +1406,13 @@ class RLPolicyNodeArgs:
     object_name: str = "claw_hammer"
     """The name of the object whose grasp bounding box will be used as input to the policy."""
 
+    robot: str = "franka_right_sharpa"
+    """Robot profile name: franka_right_sharpa or kuka_left_sharpa."""
+
 
 def main():
     args: RLPolicyNodeArgs = tyro.cli(RLPolicyNodeArgs)
+    set_robot_profile(args.robot)
 
     config_path = args.policy_path / "config.yaml"
     checkpoint_path = args.policy_path / "model.pth"

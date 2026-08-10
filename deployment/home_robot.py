@@ -1,3 +1,4 @@
+import argparse
 import copy
 import sys
 import time
@@ -6,25 +7,21 @@ import numpy as np
 import rospy
 from sensor_msgs.msg import JointState
 
+from isaacgymenvs.utils.observation_action_utils_sharpa import (
+    RobotProfile,
+    get_robot_profile,
+)
+
 # Global variables for current joint positions
 CURRENT_JOINT_POS_IIWA = None
 CURRENT_JOINT_POS_SHARPA = None
 
-# Home joint positions
-# HOME_JOINT_POS_IIWA = np.array([-1.571, 1.571, -0.000, 1.376, -0.000, 1.485, 1.308])
-HOME_JOINT_POS_IIWA = np.array(
-    [
-        -1.571,
-        1.571 - np.deg2rad(10),
-        -0.000,
-        1.376 + np.deg2rad(10),
-        -0.000,
-        1.485,
-        1.308,
-    ]
-)
-HOME_JOINT_POS_SHARPA = np.zeros(22)
-HOME_JOINT_POS = np.concatenate([HOME_JOINT_POS_IIWA, HOME_JOINT_POS_SHARPA])
+# Robot selection: overridden by the --robot CLI arg in main()
+PROFILE: RobotProfile = get_robot_profile("franka_right_sharpa")
+
+
+def home_joint_pos(profile: RobotProfile) -> np.ndarray:
+    return np.concatenate([profile.home_arm_qpos, np.zeros(22)])
 
 
 def current_joint_pos_iiwa_callback(msg: JointState) -> None:
@@ -69,15 +66,7 @@ def publish_joint_pos_targets(
     iiwa_msg = JointState()
     iiwa_msg.header.stamp = rospy.Time.now()
     iiwa_msg.header.frame_id = ""
-    iiwa_msg.name = [
-        "iiwa_joint_1",
-        "iiwa_joint_2",
-        "iiwa_joint_3",
-        "iiwa_joint_4",
-        "iiwa_joint_5",
-        "iiwa_joint_6",
-        "iiwa_joint_7",
-    ]
+    iiwa_msg.name = list(PROFILE.ros_arm_joint_names)
     sharpa_msg = JointState()
     sharpa_msg.header.stamp = rospy.Time.now()
     sharpa_msg.header.frame_id = ""
@@ -153,12 +142,26 @@ def move_to_pose(
 
 
 def main():
+    global PROFILE
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--robot",
+        default="franka_right_sharpa",
+        choices=["franka_right_sharpa", "kuka_left_sharpa"],
+    )
+    cli_args = parser.parse_args()
+    PROFILE = get_robot_profile(cli_args.robot)
+    arm_ns = PROFILE.ros_arm_ns
+
     # Initialize ROS node
     rospy.init_node("home_robot", anonymous=True)
 
     # Create subscribers and publishers
     _sub_iiwa = rospy.Subscriber(
-        "/iiwa/joint_states", JointState, current_joint_pos_iiwa_callback, queue_size=1
+        f"/{arm_ns}/joint_states",
+        JointState,
+        current_joint_pos_iiwa_callback,
+        queue_size=1,
     )
     _sub_sharpa = rospy.Subscriber(
         "/sharpa/joint_states",
@@ -166,7 +169,7 @@ def main():
         current_joint_pos_sharpa_callback,
         queue_size=1,
     )
-    pub_iiwa = rospy.Publisher("/iiwa/joint_cmd", JointState, queue_size=1)
+    pub_iiwa = rospy.Publisher(f"/{arm_ns}/joint_cmd", JointState, queue_size=1)
     pub_sharpa = rospy.Publisher("/sharpa/joint_cmd", JointState, queue_size=1)
 
     # Wait for current joint positions to be available
@@ -185,7 +188,7 @@ def main():
     # Move to home pose
     print("Moving to home pose")
     move_to_pose(
-        HOME_JOINT_POS,
+        home_joint_pos(PROFILE),
         pub_iiwa=pub_iiwa,
         pub_sharpa=pub_sharpa,
         move_time=10.0,

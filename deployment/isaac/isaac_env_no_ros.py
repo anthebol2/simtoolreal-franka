@@ -5,6 +5,7 @@ import torch
 # isort: on
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,18 +18,16 @@ from termcolor import colored
 from deployment.isaac.isaac_env import create_env
 from deployment.rl_player import RlPlayer
 from isaacgymenvs.utils.observation_action_utils_sharpa import (
+    RobotProfile,
     compute_joint_pos_targets,
     compute_observation,
     create_urdf_object,
+    get_robot_profile,
 )
 from isaacgymenvs.utils.utils import get_repo_root_dir
 
 N_OBS = 140
 N_ACT = 29
-
-HAND_MOVING_AVERAGE = 0.1
-ARM_MOVING_AVERAGE = 0.05
-HAND_DOF_SPEED_SCALE = 2.5
 
 
 def warn(message: str):
@@ -46,11 +45,19 @@ class IsaacEnvNoRos:
         control_dt: float,
         device: str,
         urdf: yourdfpy.URDF,
+        profile: RobotProfile,
+        hand_moving_average: float = 0.1,
+        arm_moving_average: float = 0.1,
+        hand_dof_speed_scale: float = 1.5,
     ):
         self.env = env
         self.control_dt = control_dt
         self.device = device
         self.urdf = urdf
+        self.profile = profile
+        self.hand_moving_average = hand_moving_average
+        self.arm_moving_average = arm_moving_average
+        self.hand_dof_speed_scale = hand_dof_speed_scale
 
     def reset(self) -> torch.Tensor:
         obs, _, _, _ = self.env.step(
@@ -62,10 +69,11 @@ class IsaacEnvNoRos:
         joint_pos_targets = compute_joint_pos_targets(
             actions=action.cpu().numpy(),
             prev_targets=self.env.prev_targets.cpu().numpy(),
-            hand_moving_average=HAND_MOVING_AVERAGE,
-            arm_moving_average=ARM_MOVING_AVERAGE,
-            hand_dof_speed_scale=HAND_DOF_SPEED_SCALE,
+            hand_moving_average=self.hand_moving_average,
+            arm_moving_average=self.arm_moving_average,
+            hand_dof_speed_scale=self.hand_dof_speed_scale,
             dt=self.control_dt,
+            profile=self.profile,
         )
         joint_pos_targets = torch.from_numpy(joint_pos_targets).float().to(self.device)
 
@@ -96,27 +104,24 @@ class IsaacEnvNoRos:
             object_scales=object_scales.cpu().numpy(),
             urdf=self.urdf,
             obs_list=self.env.obs_list,
+            profile=self.profile,
         )
         new_obs = torch.from_numpy(new_obs).float().to(self.device)
 
-        DEBUG = False
-        if DEBUG:
-            diff = (obs["obs"] - new_obs).abs()[0]
-            print(f"diff = {diff}")
-            print(f"diff.max() = {diff.max()}")
-            print(f"diff.argsort() = {diff.argsort()}")
-
-            from isaacgymenvs.utils.observation_action_utils_sharpa import OBS_NAMES
-
-            idxs = diff.argsort()
-            for idx in idxs:
-                print(f"OBS_NAMES[{idx}] = {OBS_NAMES[idx]}")
-                print(f"obs['obs'][{idx}] = {obs['obs'][0, idx]}")
-                print(f"new_obs[{idx}] = {new_obs[0, idx]}")
-                print(f"diff[{idx}] = {diff[idx]}")
-                print("--------------------------------")
-
-            breakpoint()
+        # Opt-in parity check: env-computed obs vs deployment-recomputed obs.
+        # Quaternion dims (palm_rot 90:94, object_rot 94:98) are excluded from
+        # the second number because q and -q are the same rotation.
+        if os.environ.get("PRINT_OBS_DIFF"):
+            self._obs_diff_step = getattr(self, "_obs_diff_step", 0) + 1
+            if self._obs_diff_step % 60 == 0:
+                diff = (obs["obs"] - new_obs).abs()[0]
+                non_quat = torch.cat([diff[:90], diff[98:]])
+                print(
+                    f"[OBS_DIFF] step={self._obs_diff_step} "
+                    f"max={diff.max().item():.5f} "
+                    f"max_non_quat={non_quat.max().item():.5f} "
+                    f"argmax={diff.argmax().item()}"
+                )
         return new_obs, reward, done, info
 
 
@@ -143,6 +148,22 @@ class IsaacEnvNoRosArgs:
     headless: bool = False
     """Run IsaacGym without rendering."""
 
+    robot: str = "franka_right_sharpa"
+    """Robot profile name: franka_right_sharpa or kuka_left_sharpa."""
+
+    device: str = "auto"
+    """cuda | cpu | auto. cpu keeps the GPU visible for the graphics context but
+    runs physics + policy on CPU (useful when the GPU is busy training)."""
+
+    hand_moving_average: float = 0.1
+    """Hand target EMA; must match the policy's training config."""
+
+    arm_moving_average: float = 0.1
+    """Arm target EMA; must match the policy's training config."""
+
+    hand_dof_speed_scale: float = 1.5
+    """Arm target integration rate; must match the policy's training config (dofSpeedScale)."""
+
 
 def main():
     args: IsaacEnvNoRosArgs = tyro.cli(IsaacEnvNoRosArgs)
@@ -167,12 +188,11 @@ def main():
         traj_data = json.load(f)
 
     # NOTE: cpu has different physics than training
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    env = create_env(
-        config_path=str(args.config_path),
-        headless=args.headless,
-        device=DEVICE,
-        overrides={
+    if args.device == "auto":
+        DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    else:
+        DEVICE = args.device
+    overrides = {
             # Turn off randomization noise
             "task.env.resetPositionNoiseX": 0.0,
             "task.env.resetPositionNoiseY": 0.0,
@@ -221,7 +241,22 @@ def main():
             "task.env.torqueProbRange": [0.0001, 0.0001],
             "task.env.linVelImpulseProbRange": [0.0001, 0.0001],
             "task.env.angVelImpulseProbRange": [0.0001, 0.0001],
-        },
+    }
+    if DEVICE == "cpu":
+        overrides.update(
+            {
+                "sim_device": "cpu",
+                "rl_device": "cpu",
+                "pipeline": "cpu",
+                # Force sensors return zeros on CPU and the env raises if enabled
+                "task.env.withTableForceSensor": False,
+            }
+        )
+    env = create_env(
+        config_path=str(args.config_path),
+        headless=args.headless,
+        device=DEVICE,
+        overrides=overrides,
     )
 
     # Set env state from checkpoint to match things like success_tolerance
@@ -238,13 +273,18 @@ def main():
         num_envs=env.num_envs,
     )
 
-    urdf = create_urdf_object(robot_name="iiwa14_left_sharpa_adjusted_restricted")
+    profile = get_robot_profile(args.robot)
+    urdf = create_urdf_object(robot_name=profile.urdf_name)
 
     isaac_env = IsaacEnvNoRos(
         env=env,
         control_dt=control_dt,
         device=DEVICE,
         urdf=urdf,
+        profile=profile,
+        hand_moving_average=args.hand_moving_average,
+        arm_moving_average=args.arm_moving_average,
+        hand_dof_speed_scale=args.hand_dof_speed_scale,
     )
     observation = isaac_env.reset()
 

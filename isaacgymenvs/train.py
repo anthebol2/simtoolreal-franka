@@ -308,7 +308,12 @@ if __name__ == "__main__":
         vec_env = None
         while True:
             cfg_n_env = launch_rlg_hydra(cfg, vec_env)
-            if not isinstance(cfg_n_env, tuple):
+            # PBT restarts return a (cfg, env) tuple; normal completion (e.g.
+            # max_epochs reached) returns rl_games' (last_mean_rewards, epoch_num).
+            if not (
+                isinstance(cfg_n_env, tuple)
+                and hasattr(cfg_n_env[1], "change_on_restart")
+            ):
                 break
             cfg, vec_env = cfg_n_env
             vec_env.change_on_restart(omegaconf_to_dict(cfg.task))

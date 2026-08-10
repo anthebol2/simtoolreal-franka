@@ -10,11 +10,18 @@ import rospy
 import tyro
 from sensor_msgs.msg import JointState
 
+from isaacgymenvs.utils.observation_action_utils_sharpa import (
+    RobotProfile,
+    get_robot_profile,
+)
 from recorded_data import RecordedData
 
 # Global variables for current joint positions
 CURRENT_JOINT_POS_IIWA = None
 CURRENT_JOINT_POS_SHARPA = None
+
+# Robot selection: overridden by the --robot CLI arg in main()
+PROFILE: RobotProfile = get_robot_profile("franka_right_sharpa")
 
 
 def current_joint_pos_iiwa_callback(msg: JointState) -> None:
@@ -59,36 +66,12 @@ def publish_joint_pos_targets(
     iiwa_msg = JointState()
     iiwa_msg.header.stamp = rospy.Time.now()
     iiwa_msg.header.frame_id = ""
-    iiwa_msg.name = [
-        "iiwa_joint_1",
-        "iiwa_joint_2",
-        "iiwa_joint_3",
-        "iiwa_joint_4",
-        "iiwa_joint_5",
-        "iiwa_joint_6",
-        "iiwa_joint_7",
-    ]
+    iiwa_msg.name = list(PROFILE.ros_arm_joint_names)
     sharpa_msg = JointState()
     sharpa_msg.header.stamp = rospy.Time.now()
     sharpa_msg.header.frame_id = ""
-    sharpa_msg.name = [
-        "joint_0.0",
-        "joint_1.0",
-        "joint_2.0",
-        "joint_3.0",
-        "joint_4.0",
-        "joint_5.0",
-        "joint_6.0",
-        "joint_7.0",
-        "joint_8.0",
-        "joint_9.0",
-        "joint_10.0",
-        "joint_11.0",
-        "joint_12.0",
-        "joint_13.0",
-        "joint_14.0",
-        "joint_15.0",
-    ]
+    # NOTE: was previously truncated to 16 names (bug); the hand has 22 joints
+    sharpa_msg.name = [f"joint_{i}.0" for i in range(22)]
 
     iiwa_msg.position = copy.deepcopy(iiwa_joint_pos.tolist())
     sharpa_msg.position = copy.deepcopy(sharpa_joint_pos.tolist())
@@ -148,11 +131,16 @@ class ReplayTrajectoryArgs:
     """Factor to slow down the trajectory by."""
 
     mode: Literal["joint_positions", "joint_pos_targets"] = "joint_positions"
+
+    robot: str = "franka_right_sharpa"
+    """Robot profile name: franka_right_sharpa or kuka_left_sharpa."""
     """Mode to replay the trajectory in."""
 
 
 def main():
+    global PROFILE
     args: ReplayTrajectoryArgs = tyro.cli(ReplayTrajectoryArgs)
+    PROFILE = get_robot_profile(args.robot)
 
     # Read in trajectory
     file_path = args.file_path
@@ -175,7 +163,10 @@ def main():
 
     # Create subscribers and publishers
     _sub_iiwa = rospy.Subscriber(
-        "/iiwa/joint_states", JointState, current_joint_pos_iiwa_callback, queue_size=1
+        f"/{PROFILE.ros_arm_ns}/joint_states",
+        JointState,
+        current_joint_pos_iiwa_callback,
+        queue_size=1,
     )
     _sub_sharpa = rospy.Subscriber(
         "/sharpa/joint_states",
@@ -183,7 +174,9 @@ def main():
         current_joint_pos_sharpa_callback,
         queue_size=1,
     )
-    pub_iiwa = rospy.Publisher("/iiwa/joint_cmd", JointState, queue_size=1)
+    pub_iiwa = rospy.Publisher(
+        f"/{PROFILE.ros_arm_ns}/joint_cmd", JointState, queue_size=1
+    )
     pub_sharpa = rospy.Publisher("/sharpa/joint_cmd", JointState, queue_size=1)
 
     # Wait for current joint positions to be available
