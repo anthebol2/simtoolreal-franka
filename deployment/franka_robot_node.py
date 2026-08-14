@@ -37,6 +37,7 @@ import rospy
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64MultiArray
 from termcolor import colored
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from isaacgymenvs.utils.observation_action_utils_sharpa import get_robot_profile
 
@@ -61,12 +62,26 @@ class FrankaRobotNode:
         output_topic: str = "/position_joint_position_controller/command",
         franka_joint_states_topic: str = "/franka_state_controller/joint_states",
         dry_run: bool = False,
+        q1_offset_deg: float = 0.0,
     ):
         self.profile = get_robot_profile(robot)
         self.control_hz = control_hz
         self.dt = 1.0 / control_hz
         self.watchdog_timeout = watchdog_timeout
         self.dry_run = dry_run
+        # Virtual-world yaw remap: the policy was trained with its workspace at
+        # base -y; if the physical bench sits elsewhere, rotating the whole task
+        # about the base z-axis is an exact arm symmetry (joint 1 IS that axis).
+        # Convention: q1_real = q1_virtual + offset. This node is the single
+        # bridge for ALL arm state/commands, so applying the offset here (and
+        # rotating perception poses by -offset in the relay) fully virtualizes
+        # the rotation; policy, goal node, and home_robot need no changes.
+        self.q1_offset = np.deg2rad(q1_offset_deg)
+        if abs(self.q1_offset) > 1e-9:
+            info(
+                f"VIRTUAL YAW REMAP active: q1_real = q1_virtual + {q1_offset_deg:.1f} deg "
+                f"(pair with object_pose_relay_node --yaw-deg {-q1_offset_deg:.1f})"
+            )
 
         # Per-joint max target step per control tick [rad]
         self.max_step = self.profile.arm_vel_limits * vel_limit_fraction * self.dt
@@ -93,11 +108,22 @@ class FrankaRobotNode:
             f"/{arm_ns}/joint_states", JointState, queue_size=1
         )
 
-        # Hardware-side interface
+        # Hardware-side interface. TRAJECTORY mode (default): stream single-point
+        # JointTrajectory goals to position_joint_trajectory_controller, which
+        # interpolates internally at 1 kHz (quintic), starts by HOLDING the
+        # current pose, and tolerates stream hiccups — unlike the raw
+        # JointGroupPositionController, where every dropped 1 kHz packet became
+        # a reference jump -> torque impulse -> tau_J_range_violation.
+        self.use_traj_controller = "trajectory" in output_topic
         if not self.dry_run:
-            self.hw_cmd_pub = rospy.Publisher(
-                output_topic, Float64MultiArray, queue_size=1
-            )
+            if self.use_traj_controller:
+                self.hw_cmd_pub = rospy.Publisher(
+                    output_topic, JointTrajectory, queue_size=1
+                )
+            else:
+                self.hw_cmd_pub = rospy.Publisher(
+                    output_topic, Float64MultiArray, queue_size=1
+                )
             self.hw_state_sub = rospy.Subscriber(
                 franka_joint_states_topic,
                 JointState,
@@ -109,6 +135,7 @@ class FrankaRobotNode:
             self.measured_q = np.concatenate(
                 [self.profile.home_arm_qpos, np.zeros(0)]
             )[:NUM_ARM_JOINTS].copy()
+            self.measured_q[0] += self.q1_offset  # dry-run sim state is REAL-frame
             self.measured_qd = np.zeros(NUM_ARM_JOINTS)
             info("DRY-RUN mode: simulating the arm (no hardware topics)")
 
@@ -117,6 +144,8 @@ class FrankaRobotNode:
         if pos.shape != (NUM_ARM_JOINTS,):
             warn(f"Ignoring joint_cmd with {pos.shape[0]} positions (expected 7)")
             return
+        pos = pos.copy()
+        pos[0] += self.q1_offset  # virtual -> real
         self.latest_cmd = pos
         self.latest_cmd_time = time.time()
 
@@ -140,7 +169,9 @@ class FrankaRobotNode:
         msg = JointState()
         msg.header.stamp = rospy.Time.now()
         msg.name = self.arm_joint_names
-        msg.position = self.measured_q.tolist()
+        pos = self.measured_q.copy()
+        pos[0] -= self.q1_offset  # real -> virtual
+        msg.position = pos.tolist()
         msg.velocity = self.measured_qd.tolist()
         self.state_pub.publish(msg)
 
@@ -152,6 +183,24 @@ class FrankaRobotNode:
         # Watchdog: hold position on stale commands
         if time.time() - self.latest_cmd_time > self.watchdog_timeout:
             target = self.forwarded_target
+            # Re-anchor: if the arm stopped tracking (reflex / controller died)
+            # while commands kept coming, forwarded_target walks far from the
+            # measured state. Re-publishing that far target when a controller
+            # (re)starts causes an instant discontinuity reflex. With stale
+            # commands AND a large divergence, snap the held target back to
+            # the measured pose so recovery is always jump-free.
+            if (
+                self.measured_q is not None
+                and np.abs(self.forwarded_target - self.measured_q).max() > 0.15
+            ):
+                warn(
+                    "Held target diverged from measured state "
+                    f"(max {np.abs(self.forwarded_target - self.measured_q).max():.2f} rad) "
+                    "with stale commands — re-anchoring to measured pose."
+                )
+                self.forwarded_target = self.measured_q.copy()
+                self.latest_cmd = self.measured_q.copy()
+                target = self.forwarded_target
 
         target = np.clip(target, self.arm_lower, self.arm_upper)
 
@@ -167,10 +216,43 @@ class FrankaRobotNode:
                 self._rate_limited_since_warn = 0
         self.forwarded_target = self.forwarded_target + step
 
+        # Reference governor: cap the forwarded target's DISTANCE from the
+        # measured arm, per joint. The internal joint-impedance controller turns
+        # reference-vs-arm gap into torque (tau = K * gap); the wrist joints
+        # (K=[600x4,250,150,50] Nm/rad vs torque limits [87x4,12,12,12] Nm)
+        # tolerate only a few degrees of gap before tau_J_range_violation stops
+        # the robot — which killed every fast target stream on this rig. This
+        # clamp makes the reference wait for the arm: it advances only as fast
+        # as the arm actually tracks, keeping commanded torque bounded.
+        if not self.dry_run and self.measured_q is not None:
+            # Caps sized for the SOFT internal impedance set by arm_ready.sh
+            # (K=[600,600,600,450,250,150,100]): tau at cap ~= 50% of each
+            # joint's torque limit, leaving headroom for dynamics.
+            GAP_CAP = np.array([0.07, 0.07, 0.07, 0.09, 0.024, 0.04, 0.06])
+            self.forwarded_target = np.clip(
+                self.forwarded_target,
+                self.measured_q - GAP_CAP,
+                self.measured_q + GAP_CAP,
+            )
+
         if not self.dry_run:
-            out = Float64MultiArray()
-            out.data = self.forwarded_target.tolist()
-            self.hw_cmd_pub.publish(out)
+            if self.use_traj_controller:
+                # stream a one-point trajectory 80 ms ahead at ~50 Hz — the
+                # controller's own interpolator produces the smooth 1 kHz refs
+                self._traj_decim = getattr(self, "_traj_decim", 0) + 1
+                if self._traj_decim >= 4:
+                    self._traj_decim = 0
+                    traj = JointTrajectory()
+                    traj.joint_names = self.arm_joint_names
+                    pt = JointTrajectoryPoint()
+                    pt.positions = self.forwarded_target.tolist()
+                    pt.time_from_start = rospy.Duration(0.08)
+                    traj.points = [pt]
+                    self.hw_cmd_pub.publish(traj)
+            else:
+                out = Float64MultiArray()
+                out.data = self.forwarded_target.tolist()
+                self.hw_cmd_pub.publish(out)
         else:
             # Simulate: first-order tracking of the forwarded target
             prev_q = self.measured_q.copy()
@@ -209,13 +291,24 @@ def main() -> None:
     )
     parser.add_argument("--watchdog_timeout", type=float, default=0.5)
     parser.add_argument(
-        "--output_topic", default="/position_joint_position_controller/command"
+        "--output_topic",
+        default="/position_joint_trajectory_controller/command",
+        help="trajectory-controller topic (default, robust) or the raw "
+        "/position_joint_position_controller/command",
     )
     parser.add_argument(
         "--franka_joint_states_topic",
         default="/franka_state_controller/joint_states",
     )
     parser.add_argument("--dry_run", action="store_true")
+    parser.add_argument(
+        "--q1_offset_deg",
+        type=float,
+        default=0.0,
+        help="Virtual yaw remap: q1_real = q1_virtual + this. Use +90 when the "
+        "physical workspace is at base +x instead of the trained -y; pair with "
+        "object_pose_relay_node --yaw-deg -90.",
+    )
     args = parser.parse_args()
 
     node = FrankaRobotNode(
@@ -226,6 +319,7 @@ def main() -> None:
         output_topic=args.output_topic,
         franka_joint_states_topic=args.franka_joint_states_topic,
         dry_run=args.dry_run,
+        q1_offset_deg=args.q1_offset_deg,
     )
     try:
         node.run()

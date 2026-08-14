@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<!-- Lab hammer (DexFunGrasp CoRL/traj_obj/hammer_002_scanned), re-framed to the
+     claw_hammer axis convention (handle -x..0, head at +x, claw toward +y) via
+     deployment/hammer_002_scanned_reframe.json. The FP tracker uses the ORIGINAL
+     textured scan; the relay applies the re-frame so poses arrive in THIS frame. -->
+<robot name="hammer_002_scanned">
+  <link name="hammer_002_scanned">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="hammer_002_scanned.obj" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="hammer_002_scanned.obj" scale="1 1 1"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <density value="400.0"/>
+    </inertial>
+  </link>
+</robot>

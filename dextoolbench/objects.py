@@ -96,6 +96,18 @@ HAMMER_NAME_TO_OBJECT = {
         scale=rescale_by_factor((0.10, 0.0225, 0.015), factor=25),
         need_vhacd=False,
     ),
+    # Lab hammer (scanned), re-framed to the claw_hammer axis convention so the
+    # hammer task trajectories transfer. Handle measured from the re-framed mesh:
+    # clear cylindrical grasp region ~0.18 long, ~0.032 x 0.030 cross-section
+    # (estimate from the scan - refine with calipers on the real handle).
+    "hammer_002_scanned": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/hammer/hammer_002_scanned/hammer_002_scanned.urdf"
+        ),
+        scale=rescale_by_factor((0.18, 0.032, 0.030), factor=25),
+        need_vhacd=False,
+    ),
 }
 
 # overwrite NAME_TO_OBJECT with HAMMER_NAME_TO_OBJECT even if they share keys

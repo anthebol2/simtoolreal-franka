@@ -149,6 +149,12 @@ def main():
         default="franka_right_sharpa",
         choices=["franka_right_sharpa", "kuka_left_sharpa"],
     )
+    parser.add_argument(
+        "--move_time",
+        type=float,
+        default=10.0,
+        help="seconds for the interpolation to HOME (raise for a slower, gentler move)",
+    )
     cli_args = parser.parse_args()
     PROFILE = get_robot_profile(cli_args.robot)
     arm_ns = PROFILE.ros_arm_ns
@@ -191,7 +197,7 @@ def main():
         home_joint_pos(PROFILE),
         pub_iiwa=pub_iiwa,
         pub_sharpa=pub_sharpa,
-        move_time=10.0,
+        move_time=cli_args.move_time,
     )
     print("Reached home pose")
 

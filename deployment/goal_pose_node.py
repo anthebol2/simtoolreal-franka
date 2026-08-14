@@ -12,6 +12,7 @@ from termcolor import colored
 
 from isaacgymenvs.utils.observation_action_utils_sharpa import (
     _compute_keypoint_positions,
+    get_robot_profile,
 )
 from isaacgymenvs.utils.utils import get_repo_root_dir
 
@@ -278,6 +279,10 @@ class GoalPoseNodeArgs:
     force_fixed_orientation: bool = False
     """Force fixed orientation mode, i.e., overwrite the orientation with a fixed one."""
 
+    robot: str = "franka_right_sharpa"
+    """Robot profile name: franka_right_sharpa or kuka_left_sharpa. Sets the
+    world->robot base offset (T_W_R) used to convert the task-json goal poses."""
+
 
 def main():
     args: GoalPoseNodeArgs = tyro.cli(GoalPoseNodeArgs)
@@ -294,10 +299,15 @@ def main():
     with open(trajectory_path) as f:
         traj_data = json.load(f)
 
-    # Account for robot to world frame
+    # Account for robot to world frame. The task-json goals are in WORLD frame;
+    # the robot base sits at T_W_R in world (KUKA y=0.8, Franka y=0.65), so
+    # robot_frame = world - T_W_R translation. This was hardcoded to the KUKA
+    # 0.8 before, which shifted every goal 0.15 m in y for the Franka profile
+    # (rl_policy_node converts back with the PROFILE's own T_W_R).
+    t_w_r = get_robot_profile(args.robot).T_W_R[:3, 3]
     goal_poses_world_frame = traj_data["goals"]
     goal_poses_robot_frame = [
-        [x, y - 0.8, z, qx, qy, qz, qw]
+        [x - t_w_r[0], y - t_w_r[1], z - t_w_r[2], qx, qy, qz, qw]
         for x, y, z, qx, qy, qz, qw in goal_poses_world_frame
     ]
 

@@ -1130,6 +1130,17 @@ class RLPolicyNode:
         # Reset rnn state
         self.player.reset()
 
+        # Re-anchor the target integrator to the arm's TRUE pose (sim reset
+        # semantics: episodes start with prev targets = current q). During
+        # warmup prev_targets accumulates ~7 deg/s of task pull; carrying that
+        # into the first real step makes the initial command jump by however
+        # long warmup took — tripping the sanity gate and (on a struggling
+        # controller) torque reflexes.
+        _, q_now, _ = self.create_observation()
+        if q_now is not None:
+            self.prev_targets = q_now
+        # (None only during shutdown races — keep the last targets then)
+
         # Done warming up
         self._warmup_completed = True
         info("=" * 100)
@@ -1261,7 +1272,17 @@ class RLPolicyNode:
 
             # Sanity check that the joint pos targets are not too far from the current joint positions
             q_arm_diff_deg = np.rad2deg(np.abs(joint_pos_targets[0, :7] - q[:7]))
-            MAX_Q_ARM_DIFF_DEG = 10
+            # 2026-08-14 (final): 45 deg. This policy uses ABSOLUTE action targets
+            # blended by arm_moving_average=0.1 — the EMA'd target legitimately
+            # steps 10-20 deg/tick toward far desired poses (sim relies on
+            # exactly this; measured 10.07 then 20.05 deg = one/two EMA steps).
+            # Physical speed is capped by franka_robot_node's rate limiter
+            # (0.5x real limits), so this gate is ONLY a gross-garbage detector.
+            # 120: garbage-only detector (NaN / unit mixups). During normal slow
+            # tracking the WRIST legitimately lags the policy's desired pose by
+            # 30-60 deg while it catches up (12 Nm joints + 1.4 kg hand); the
+            # governor + rate limiter bound the actual motion, not this gate.
+            MAX_Q_ARM_DIFF_DEG = 120
             if q_arm_diff_deg.max() > MAX_Q_ARM_DIFF_DEG:
                 error(
                     f"Joint pos targets are too far from current joint positions, q_arm_diff: {q_arm_diff_deg} (max: {MAX_Q_ARM_DIFF_DEG})"
@@ -1424,7 +1445,17 @@ def main():
             config_path=config_path,
             checkpoint_path=checkpoint_path,
             hand_moving_average=0.1,
-            arm_moving_average=0.1,
+            # 0.1 (sim value) walks arm targets ~7 deg/tick toward far desired
+            # poses — faster than the real 12 Nm wrist + 1.4 kg hand can track
+            # (tau_J faults). 0.02 = 5x slower target walk: same behavior in
+            # slow motion, matching the real wrist's torque budget. Note for
+            # the v2 retrain: train WITH real limits so this can return to 0.1.
+            # 0.08 (near the trained 0.1): at 0.02 the LSTM's task rhythm ran 5x
+            # ahead of the body — it "grasped" on schedule mid-descent and
+            # carried a phantom object to the goal height (observed trials 1&3).
+            # The trajectory-controller transport now absorbs fast targets
+            # safely, so the slow-motion compromise is no longer needed.
+            arm_moving_average=0.08,
             hand_dof_speed_scale=1.5,
             object_scales=np.array(NAME_TO_OBJECT[args.object_name].scale),
             save_foldername=f"{datetime.datetime.now().strftime('%Y-%m-%d')}_testing",
