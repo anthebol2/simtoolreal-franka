@@ -24,7 +24,17 @@ class RlPlayer:
         checkpoint_path: Optional[str],
         device: str,
         num_envs: int = 1,
+        sapg_coef_id: float = 0.0,
     ) -> None:
+        # SAPG coef-ID channel appended to the obs. Training assigns IDs
+        # linspace(50 -> 0) across blocks with exploration reward coefficients
+        # linspace(0.5 -> 0.0) * scale (rl_games/common/a2c_common.py:331-343):
+        # ID 50 = MAX-exploration block, ID 0 = zero-exploration exploit block
+        # (the leader under use_others_experience='lf'). Deployment must use the
+        # exploit persona: 0.0. The historical hardcoded value 50.0 selected the
+        # max-exploration persona, which can hover/explore instead of solving
+        # the task (verified 2026-08-15: hover-at-20cm in sim and real).
+        self.sapg_coef_id = sapg_coef_id
         self.num_observations = num_observations
         self.num_actions = num_actions
         self.device = device
@@ -94,9 +104,13 @@ class RlPlayer:
         batch_size = obs.shape[0]
         assert_equals(obs.shape, (batch_size, self.num_observations))
 
-        # SAPG HACK: Need to idx to end of observation
+        # SAPG: append the coef-ID channel (see __init__; 0.0 = exploit block)
         obs = torch.cat(
-            [obs, 50.0 + torch.zeros((batch_size, 1), device=self.device)], dim=1
+            [
+                obs,
+                self.sapg_coef_id + torch.zeros((batch_size, 1), device=self.device),
+            ],
+            dim=1,
         )
 
         normalized_action = self.player.get_action(

@@ -4545,6 +4545,20 @@ class SimToolReal(VecTask):
                     f"  p95: {[round(x, 3) for x in q[0].tolist()]}"
                 )
 
+        # Opt-in task statistics (for eval-path debugging): set PRINT_TASK_STATS=1
+        if os.environ.get("PRINT_TASK_STATS") and self.frame_since_restart % 300 == 0:
+            lifted = (
+                self.lifted_object.float().mean().item()
+                if hasattr(self, "lifted_object")
+                else float("nan")
+            )
+            print(
+                f"[TASK_STATS] step={self.frame_since_restart} "
+                f"successes_mean={self.successes.float().mean().item():.2f} "
+                f"lifted_frac={lifted:.2f} "
+                f"object_z_mean={self.object_pose[:, 2].mean().item():.3f}"
+            )
+
         self.progress_buf += 1
         self.randomize_buf += 1
 

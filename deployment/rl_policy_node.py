@@ -338,6 +338,10 @@ class RLPolicyNode:
         # Set up chain
         self.urdf_object = create_urdf_object(robot_name=PROFILE.urdf_name)
 
+        # Quaternion hemisphere continuity across the deployment run (never
+        # reset mid-run; see _align_quat_hemisphere)
+        self._quat_continuity_state: dict = {}
+
         # State: prev_targets
         self.prev_targets = None
         self._warmup_completed = False
@@ -448,6 +452,7 @@ class RLPolicyNode:
                 urdf=self.urdf_object,
                 obs_list=self.obs_list,
                 profile=PROFILE,
+                quat_continuity_state=self._quat_continuity_state,
             )
             observation = torch.from_numpy(observation).float().to(self.device)
         assert_equals(

@@ -58,8 +58,10 @@ class IsaacEnvNoRos:
         self.hand_moving_average = hand_moving_average
         self.arm_moving_average = arm_moving_average
         self.hand_dof_speed_scale = hand_dof_speed_scale
+        self.quat_continuity_state: dict = {}
 
     def reset(self) -> torch.Tensor:
+        self.quat_continuity_state.clear()
         obs, _, _, _ = self.env.step(
             torch.zeros((self.env.num_envs, N_ACT), device=self.device)
         )
@@ -105,6 +107,7 @@ class IsaacEnvNoRos:
             urdf=self.urdf,
             obs_list=self.env.obs_list,
             profile=self.profile,
+            quat_continuity_state=self.quat_continuity_state,
         )
         new_obs = torch.from_numpy(new_obs).float().to(self.device)
 

@@ -462,6 +462,30 @@ def compute_fk_dict(
     return fk_dict
 
 
+def _align_quat_hemisphere(
+    quat_xyzw: np.ndarray, key: str, state: Optional[dict]
+) -> np.ndarray:
+    """Enforce temporal continuity of quaternion sign (q and -q are the same
+    rotation, but different network inputs).
+
+    Training observations carry the physics engine's temporally continuous
+    quaternion stream; recomputing quats per-frame (scipy from-matrix, or a
+    perception system) picks a hemisphere memorylessly and can feed the policy
+    -q in part of the orientation space, which is out-of-distribution input
+    (verified 2026-08-15: causes the descend-then-hover failure). Pass a
+    persistent dict (one per episode/run) to fix the sign to the previous
+    frame's hemisphere.
+    """
+    if state is None:
+        return quat_xyzw
+    prev = state.get(key)
+    if prev is not None:
+        flip = np.sum(quat_xyzw * prev, axis=-1, keepdims=True) < 0
+        quat_xyzw = np.where(flip, -quat_xyzw, quat_xyzw)
+    state[key] = quat_xyzw.copy()
+    return quat_xyzw
+
+
 def compute_observation(
     q: np.ndarray,
     qd: np.ndarray,
@@ -472,6 +496,7 @@ def compute_observation(
     urdf: yourdfpy.URDF,
     obs_list: list[str],
     profile: Optional[RobotProfile] = None,
+    quat_continuity_state: Optional[dict] = None,
 ) -> np.ndarray:
     # Default preserves the original KUKA + left-SharPa behavior; the
     # profile-vs-urdf joint-name assert below catches any mismatch loudly.
@@ -569,8 +594,13 @@ def compute_observation(
         f"keypoints_rel_goal.shape: {keypoints_rel_goal.shape}, expected: (N, N_KEYPOINTS, 3)"
     )
 
+    # Quaternion hemisphere continuity (see _align_quat_hemisphere)
+    palm_rot = _align_quat_hemisphere(palm_rot, "palm_rot", quat_continuity_state)
+
     # Object rot
-    object_rot = object_pose[:, 3:7]
+    object_rot = _align_quat_hemisphere(
+        object_pose[:, 3:7], "object_rot", quat_continuity_state
+    )
     t11 = time.time()
     assert object_rot.shape == (N, 4), (
         f"object_rot.shape: {object_rot.shape}, expected: (N, 4)"
