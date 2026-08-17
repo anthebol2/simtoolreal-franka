@@ -1,0 +1,34 @@
+{
+ "T_mesh_canonical": [
+  [
+   0.0,
+   1.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   -1.0,
+   0.033
+  ],
+  [
+   -1.0,
+   0.0,
+   0.0,
+   0.0877
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "handle_lwt": [
+  0.133,
+  0.03,
+  0.024
+ ],
+ "comment": "brush_scanned canonical (red_brush-like) frame: handle -x..~0.07, head +x, bristles +z; T_W_C = T_W_mesh @ T_mesh_canonical"
+}

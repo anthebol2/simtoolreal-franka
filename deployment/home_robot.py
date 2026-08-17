@@ -155,6 +155,13 @@ def main():
         default=10.0,
         help="seconds for the interpolation to HOME (raise for a slower, gentler move)",
     )
+    parser.add_argument(
+        "--via",
+        type=str,
+        default=None,
+        help="optional comma-separated 7 VIRTUAL arm joints to visit before HOME "
+        "(collision-free waypoint from a bad pose; hand held at current pose on this leg)",
+    )
     cli_args = parser.parse_args()
     PROFILE = get_robot_profile(cli_args.robot)
     arm_ns = PROFILE.ros_arm_ns
@@ -190,6 +197,21 @@ def main():
             print("Got CURRENT_JOINT_POS_IIWA and CURRENT_JOINT_POS_SHARPA")
             print("=" * 100)
             break
+
+    # Optional collision-free waypoint leg (arm only; hand holds current pose)
+    if cli_args.via is not None:
+        via_arm = np.array([float(x) for x in cli_args.via.split(",")])
+        assert via_arm.shape == (7,), f"--via needs 7 joints, got {via_arm.shape}"
+        via_pose = np.concatenate([via_arm, np.array(CURRENT_JOINT_POS_SHARPA)])
+        assert via_pose.shape == (29,), via_pose.shape
+        print(f"Moving to via waypoint (virtual): {np.round(via_arm, 3).tolist()}")
+        move_to_pose(
+            via_pose,
+            pub_iiwa=pub_iiwa,
+            pub_sharpa=pub_sharpa,
+            move_time=cli_args.move_time,
+        )
+        print("Reached via waypoint")
 
     # Move to home pose
     print("Moving to home pose")

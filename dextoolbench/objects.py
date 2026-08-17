@@ -108,6 +108,15 @@ HAMMER_NAME_TO_OBJECT = {
         scale=rescale_by_factor((0.18, 0.032, 0.030), factor=25),
         need_vhacd=False,
     ),
+    # Lab big_hammer (fat ~38mm handle, 0.22m total; onboarded 2026-08-17).
+    "big_hammer": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/hammer/big_hammer/big_hammer.urdf"
+        ),
+        scale=rescale_by_factor((0.13, 0.039, 0.037), factor=25),
+        need_vhacd=False,
+    ),
 }
 
 # overwrite NAME_TO_OBJECT with HAMMER_NAME_TO_OBJECT even if they share keys
@@ -210,6 +219,17 @@ BRUSH_NAME_TO_OBJECT = {
             / "assets/urdf/dextoolbench/brush/blue_brush/blue_brush.urdf"
         ),
         scale=rescale_by_factor((0.12, 0.035, 0.02), factor=25),
+        need_vhacd=False,
+    ),
+    # Lab brush (scan, handle artifact trimmed; onboarded 2026-08-17). Geometry
+    # near-twin of red_brush (0.307 long vs 0.319). Handle measured from the
+    # canonical mesh: ~0.133 grasp length, ~0.030 x 0.024 cross-section.
+    "brush_scanned": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/brush/brush_scanned/brush_scanned.urdf"
+        ),
+        scale=rescale_by_factor((0.133, 0.030, 0.024), factor=25),
         need_vhacd=False,
     ),
 }

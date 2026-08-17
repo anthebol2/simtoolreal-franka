@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!-- Lab big_hammer, re-framed to the claw_hammer axis convention (handle -x..0,
+     head +x). FP tracks the ORIGINAL scan; the relay applies big_hammer_reframe.json. -->
+<robot name="big_hammer">
+  <link name="big_hammer">
+    <visual><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="big_hammer.obj" scale="1 1 1"/></geometry></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="big_hammer.obj" scale="1 1 1"/></geometry></collision>
+    <inertial><density value="400.0"/></inertial>
+  </link>
+</robot>
