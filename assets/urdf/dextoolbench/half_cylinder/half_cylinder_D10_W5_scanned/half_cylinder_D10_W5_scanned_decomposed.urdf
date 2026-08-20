@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="half_cylinder_D10_W5_scanned">
+  <link name="half_cylinder_D10_W5_scanned">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="half_cylinder_D10_W5_scanned.obj" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="half_cylinder_D10_W5_scanned_collision/decomp_0.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="half_cylinder_D10_W5_scanned_collision/decomp_1.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="9.25421e-05 0.00022809 -0.00223236" rpy="0 0 0" />
+      <mass value="0.0979069" />
+      <inertia ixx="4.07495e-05" ixy="-4.20517e-07" ixz="-4.04946e-07" iyy="8.29153e-05" iyz="-8.90937e-07" izz="8.20693e-05" />
+    </inertial>
+  </link>
+</robot>

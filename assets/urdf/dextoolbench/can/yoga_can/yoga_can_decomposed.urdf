@@ -1,0 +1,58 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="yoga_can">
+  <link name="yoga_can">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can.obj" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_0.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_1.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_2.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_3.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_4.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_5.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="yoga_can_collision/decomp_6.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="0.000223177 -0.000424383 -0.00912689" rpy="0 0 0" />
+      <mass value="0.128447" />
+      <inertia ixx="0.000150413" ixy="3.42362e-08" ixz="5.1029e-07" iyy="0.000150223" iyz="-4.9647e-07" izz="5.4338e-05" />
+    </inertial>
+  </link>
+</robot>

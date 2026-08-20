@@ -1175,7 +1175,12 @@ class SimToolReal(VecTask):
         object_start_pose.p = gymapi.Vec3()
         object_start_pose.p.x = robot_pose.p.x
 
-        pose_dy, pose_dz = table_pose_dy, table_pose_dz + 0.25
+        # tableObjectYOffset shifts the spawn center along y relative to the
+        # table center (default 0 = original behavior: spawn at table center).
+        # On the real bench the working band sits 0.45-0.70 m from the base
+        # while the table center is only 0.405 m away.
+        spawn_y_offset = self.cfg["env"].get("tableObjectYOffset", 0.0) or 0.0
+        pose_dy, pose_dz = table_pose_dy + spawn_y_offset, table_pose_dz + 0.25
 
         object_start_pose.p.y = robot_pose.p.y + pose_dy
         object_start_pose.p.z = robot_pose.p.z + pose_dz
@@ -1202,9 +1207,71 @@ class SimToolReal(VecTask):
         if object_name in known_object_names:
             # One of known objects
             obj = NAME_TO_OBJECT[object_name]
-            object_asset_files = [obj.decomposed_urdf_path]
-            object_asset_scales = [obj.scale]
-            need_vhacds = [obj.need_vhacd]
+            if self.cfg["env"].get("objectDensityRandomization", False):
+                # Single-object TRAINING with the simtoolreal primitive mass
+                # convention: numAssetsPerType variants of this object with
+                # density sampled Uniform(LOW_DENSITY_MIN, LOW_DENSITY_MAX)
+                # (the printed-object range, object_size_distributions.py) —
+                # exactly how the procedural primitives sample their handles.
+                # The decomposed URDF stores explicit mass/inertia computed at
+                # the base URDF's density; both scale linearly with density.
+                # Variants are written NEXT TO the decomposed URDF so relative
+                # mesh paths keep resolving (files are deterministic, seed 42,
+                # and gitignored).
+                import re as _re
+
+                from isaacgymenvs.tasks.simtoolreal.object_size_distributions import (
+                    LOW_DENSITY_MAX,
+                    LOW_DENSITY_MIN,
+                )
+
+                num_variants = self.cfg["env"].get("numAssetsPerType", 100)
+                np.random.seed(42)
+                densities = np.random.uniform(
+                    LOW_DENSITY_MIN, LOW_DENSITY_MAX, num_variants
+                )
+                src_path = obj.decomposed_urdf_path
+                src = src_path.read_text()
+                base_density = float(
+                    _re.search(
+                        r'<density value="([\d.]+)"', obj.urdf_path.read_text()
+                    ).group(1)
+                )
+                base_mass = float(
+                    _re.search(r'<mass value="([\d.eE+-]+)"', src).group(1)
+                )
+                print(
+                    f"objectDensityRandomization: {num_variants} variants of "
+                    f"{object_name}, density U({LOW_DENSITY_MIN},{LOW_DENSITY_MAX}) "
+                    f"-> mass {base_mass * densities.min() / base_density * 1000:.0f}"
+                    f"-{base_mass * densities.max() / base_density * 1000:.0f} g"
+                )
+                object_asset_files, object_asset_scales, need_vhacds = [], [], []
+                for i, rho in enumerate(densities):
+                    factor = rho / base_density
+                    txt = _re.sub(
+                        r'<mass value="[\d.eE+-]+"',
+                        f'<mass value="{base_mass * factor:.8g}"',
+                        src,
+                    )
+                    txt = _re.sub(
+                        r'(i[xyz][xyz]=")(-?[\d.eE+-]+)(")',
+                        lambda m: m.group(1)
+                        + f"{float(m.group(2)) * factor:.8g}"
+                        + m.group(3),
+                        txt,
+                    )
+                    variant_path = src_path.with_name(
+                        f"{src_path.stem}_var{i:03d}.urdf"
+                    )
+                    variant_path.write_text(txt)
+                    object_asset_files.append(variant_path)
+                    object_asset_scales.append(obj.scale)
+                    need_vhacds.append(obj.need_vhacd)
+            else:
+                object_asset_files = [obj.decomposed_urdf_path]
+                object_asset_scales = [obj.scale]
+                need_vhacds = [obj.need_vhacd]
 
         elif object_name == "handle_head_primitives":
             object_asset_files, object_asset_scales, need_vhacds = (
@@ -1899,8 +1966,15 @@ class SimToolReal(VecTask):
         table_pose = gymapi.Transform()
         table_pose.p = gymapi.Vec3()
         table_pose.p.x = robot_pose.p.x
+        # tableDistanceFromBase: distance from the robot base to the TABLE CENTER
+        # along -y. Default (None) preserves the original behavior (table center
+        # at world y=0, i.e. robot_base_y from the base). The real bench has the
+        # robot mounted AT the table edge (center 0.405 m from the base).
+        table_distance = self.cfg["env"].get("tableDistanceFromBase", None)
+        if table_distance is None:
+            table_distance = self.robot_base_y
         table_pose_dy, table_pose_dz = (
-            -self.robot_base_y,
+            -table_distance,
             self.cfg["env"]["tableResetZ"],
         )
         table_pose.p.y = robot_pose.p.y + table_pose_dy

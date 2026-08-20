@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!-- Real lab bench (tape-measured 2026-08-17, HANDOVER_V3_RETRAIN.md section 1):
+     0.81 m x 1.00 m footprint, the 1.00 m edge along the robot-base side (x axis
+     in the trained -y-workspace convention). Box height 0.30 like table_narrow so
+     the existing "table top = tableResetZ + 0.15" convention holds everywhere:
+     tableResetZ 0.034 -> top at the measured 0.184 m above the base plane
+     (the box bottom sits below the ground plane; static body, harmless). -->
+<robot name="table_real_bench">
+  <link name="table">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="1.00 0.81 0.3"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="1.00 0.81 0.3"/>
+      </geometry>
+    </collision>
+  </link>
+</robot>

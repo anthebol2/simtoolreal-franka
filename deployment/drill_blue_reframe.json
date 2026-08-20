@@ -1,0 +1,29 @@
+{
+ "T_mesh_canonical": [
+  [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   1.0,
+   0.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0,
+   0.0
+  ],
+  [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "note": "v_canonical = R @ v_scan (up_axis=z). Identity if the scan frame was kept. Hardware side: validate direction with the overlay QA tool before live use, same as hammer_002_scanned."
+}

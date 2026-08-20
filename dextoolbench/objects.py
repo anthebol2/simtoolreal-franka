@@ -232,5 +232,49 @@ BRUSH_NAME_TO_OBJECT = {
         scale=rescale_by_factor((0.133, 0.030, 0.024), factor=25),
         need_vhacd=False,
     ),
+    # any2any baseline objects (0818_task2 roster), onboarded via
+    # dextoolbench/onboard_scanned_object.py. Grasp boxes: whole body for the
+    # can/cup/half-cylinder class, pistol-grip region for the drill. Canonical
+    # frames are z-up (scans rotated from y-up where noted in each URDF).
+    "yoga_can": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/can/yoga_can/yoga_can.urdf"
+        ),
+        scale=rescale_by_factor((0.062, 0.063, 0.121), factor=25),
+        need_vhacd=False,
+    ),
+    "half_cylinder_D10_W5_scanned": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/half_cylinder/half_cylinder_D10_W5_scanned/half_cylinder_D10_W5_scanned.urdf"
+        ),
+        scale=rescale_by_factor((0.100, 0.049, 0.057), factor=25),
+        need_vhacd=False,
+    ),
+    "salt_can": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/can/salt_can/salt_can.urdf"
+        ),
+        scale=rescale_by_factor((0.052, 0.053, 0.082), factor=25),
+        need_vhacd=False,
+    ),
+    "water_cup": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/cup/water_cup/water_cup.urdf"
+        ),
+        scale=rescale_by_factor((0.083, 0.082, 0.104), factor=25),
+        need_vhacd=False,
+    ),
+    "drill_blue": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/drill/drill_blue/drill_blue.urdf"
+        ),
+        scale=rescale_by_factor((0.050, 0.040, 0.100), factor=25),
+        need_vhacd=False,
+    ),
 }
 NAME_TO_OBJECT.update(BRUSH_NAME_TO_OBJECT)
