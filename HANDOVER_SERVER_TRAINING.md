@@ -33,8 +33,10 @@ Isaac Gym does not officially support Blackwell GPUs; this lab's
 anything else:**
 
 ```bash
-# 1. Clone the working env (never install into the teammate's env directly)
-conda create --clone dec_sapgv2 -n simtoolreal_v3
+# 1. Clone the working env (never install into the teammate's env directly).
+#    Source env (lipuhao's, runs Isaac Gym on these 5090s):
+#    /home/lipuhao/miniconda3/envs/dec_sapgv2
+conda create --clone /home/lipuhao/miniconda3/envs/dec_sapgv2 -n simtoolreal_v3
 conda activate simtoolreal_v3
 
 # 2. Repo
@@ -47,10 +49,13 @@ cd simtoolreal-franka   # branch franka-right-sharpa is the default
 pip install -e . --no-deps
 pip install -e ./rl_games --no-deps   # REQUIRED: our fork (SAPG + crash fixes)
 
-# 4. Resolve missing imports individually (install ONLY what this reveals,
-#    one package at a time, never `pip install -e .` with deps):
+# 4. Install the pure-python deps the training path needs (safe additions;
+#    none of these touch torch/cuda). Then resolve any stragglers revealed by
+#    the import check — one package at a time, never `pip install -e .` with deps:
+pip install tyro yourdfpy scipy trimesh "gym==0.23.1" omegaconf "hydra-core>=1.2" \
+  pyyaml wandb tensorboardX tensorboard termcolor pysdf "urdfpy==0.0.22" \
+  "imageio[ffmpeg]" matplotlib
 python -c "import isaacgymenvs.train" 2>&1 | tail -2
-# typical missing: tyro yourdfpy urdfpy pysdf trimesh gym==0.23.1 tensorboardX wandb
 
 # 5. GPU smoke test — THE gate for the isaacgym-on-5090 claim:
 python isaacgymenvs/launch_v3_training.py --object yoga_can --gpu 0 \
@@ -67,6 +72,13 @@ python isaacgymenvs/launch_v3_training.py --object yoga_can --gpu 0 \
 # 6. W&B (project: simtoolreal_baseline_training)
 wandb login
 ```
+
+**Notification setup (do once, on wandb.ai, logged in as the account used
+above):** Settings -> Notifications -> enable **Scriptable run alerts** for
+Email (and Slack if the team has it connected). The ship-gate watcher delivers
+its "SHIP READY" notification through `wandb.alert` — without this toggle the
+alert only appears in the W&B UI, with it anthony gets an email automatically.
+No email addresses live in the code.
 
 ## Launch
 
