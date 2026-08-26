@@ -10,7 +10,7 @@ paper exactly).
 
 ## What is being trained
 
-Six independent single-GPU runs (GPUs 0-5; two more objects join later):
+Eight independent single-GPU runs (GPUs 0-7):
 
 | GPU | object | run type |
 |---|---|---|
@@ -20,6 +20,8 @@ Six independent single-GPU runs (GPUs 0-5; two more objects join later):
 | 3 | water_cup | single-object baseline |
 | 4 | drill_blue | single-object baseline |
 | 5 | handle_head_primitives | original simtoolreal (procedural primitives) |
+| 6 | eggpie | single-object baseline |
+| 7 | small_flashlight | single-object baseline |
 
 All runs: Franka + right SharPa, real-bench geometry (table top 0.184 m,
 0.81x1.00 m, robot at the table edge), paper SAPG config, 12288 envs/GPU.

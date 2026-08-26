@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="eggpie">
+  <link name="eggpie">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="eggpie.obj" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="eggpie_collision/decomp_0.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="1.14488e-14 8.49834e-15 -5.08392e-15" rpy="0 0 0" />
+      <mass value="0.316593" />
+      <inertia ixx="0.000335599" ixy="1.52395e-07" ixz="-1.69278e-06" iyy="0.000470116" iyz="-8.87695e-07" izz="0.000558856" />
+    </inertial>
+  </link>
+</robot>

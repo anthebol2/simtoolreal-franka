@@ -276,5 +276,23 @@ BRUSH_NAME_TO_OBJECT = {
         scale=rescale_by_factor((0.050, 0.040, 0.100), factor=25),
         need_vhacd=False,
     ),
+    # NOTE: eggpie's source mesh is a 24-vertex box proxy (not a dense scan) —
+    # intentional per the any2any assets; physics is clean, visuals are coarse.
+    "eggpie": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/pie/eggpie/eggpie.urdf"
+        ),
+        scale=rescale_by_factor((0.114, 0.089, 0.069), factor=25),
+        need_vhacd=False,
+    ),
+    "small_flashlight": Object(
+        urdf_path=(
+            get_repo_root_dir()
+            / "assets/urdf/dextoolbench/flashlight/small_flashlight/small_flashlight.urdf"
+        ),
+        scale=rescale_by_factor((0.056, 0.055, 0.175), factor=25),
+        need_vhacd=False,
+    ),
 }
 NAME_TO_OBJECT.update(BRUSH_NAME_TO_OBJECT)

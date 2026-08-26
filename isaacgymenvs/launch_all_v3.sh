@@ -5,7 +5,7 @@
 #   bash isaacgymenvs/launch_all_v3.sh              # all 6 runs (GPUs 0-5)
 #   NUM_ENVS=8192 bash isaacgymenvs/launch_all_v3.sh   # smaller envs if OOM
 #
-# GPU assignment (scene2/scene7 objects join on GPUs 6-7 when onboarded):
+# GPU assignment (all 8 objects onboarded):
 RUNS=(
   "0 yoga_can"
   "1 half_cylinder_D10_W5_scanned"
@@ -13,6 +13,8 @@ RUNS=(
   "3 water_cup"
   "4 drill_blue"
   "5 handle_head_primitives"
+  "6 eggpie"
+  "7 small_flashlight"
 )
 
 set -e

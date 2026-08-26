@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<robot name="small_flashlight">
+  <link name="small_flashlight">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="small_flashlight.obj" scale="1 1 1" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="small_flashlight_collision/decomp_0.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="small_flashlight_collision/decomp_1.obj" scale="1 1 1" />
+      </geometry>
+    </collision>
+    <inertial>
+      <origin xyz="-0.00145564 -0.00221853 0.00975012" rpy="0 0 0" />
+      <mass value="0.123764" />
+      <inertia ixx="0.000344462" ixy="-1.30416e-06" ixz="-1.22001e-05" iyy="0.000344705" iyz="-2.14798e-05" izz="3.53386e-05" />
+    </inertial>
+  </link>
+</robot>

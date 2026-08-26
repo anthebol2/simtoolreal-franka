@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Onboarded any2any scan (/tmp/claude-1000/-home-anthony-Desktop-simtoolreal/b4d5e745-d146-4b6f-8d8f-cf0a64692879/scratchpad/eggpie_stage/textured.obj). Canonical frame: z-up
+     (rotated +90deg about x from the y-up scan).
+     Density: uniform-sampled per training variant (simtoolreal primitive
+     convention, LOW range 300-600 kg/m^3); the value below is the base. -->
+<robot name="eggpie">
+  <link name="eggpie">
+    <visual><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="eggpie.obj" scale="1 1 1"/></geometry></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="eggpie.obj" scale="1 1 1"/></geometry></collision>
+    <inertial><density value="450.0"/></inertial>
+  </link>
+</robot>

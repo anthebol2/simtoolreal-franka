@@ -49,6 +49,8 @@ KNOWN_OBJECTS = [
     "hammer_002_scanned",
     "big_hammer",
     "brush_scanned",
+    "eggpie",
+    "small_flashlight",
 ]
 
 

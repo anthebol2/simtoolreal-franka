@@ -88,7 +88,7 @@ def main() -> None:
 
     # sidecar files (textures/materials); keep original names so mtllib refs work
     for f in scene_dir.iterdir():
-        if f.suffix.lower() in (".mtl", ".png", ".jpg"):
+        if f.suffix.lower() in (".mtl", ".png", ".jpg", ".jpeg"):
             shutil.copy2(f, out_dir / f.name)
 
     urdf = f"""<?xml version="1.0"?>

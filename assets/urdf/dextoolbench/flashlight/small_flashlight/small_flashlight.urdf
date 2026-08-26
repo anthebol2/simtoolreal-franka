@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!-- Onboarded any2any scan (0818_task2_traj_tracking/scene7_use_flashlight/small_flashlight/textured.obj). Canonical frame: z-up
+     (scan frame kept as-is).
+     Density: uniform-sampled per training variant (simtoolreal primitive
+     convention, LOW range 300-600 kg/m^3); the value below is the base. -->
+<robot name="small_flashlight">
+  <link name="small_flashlight">
+    <visual><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="small_flashlight.obj" scale="1 1 1"/></geometry></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><mesh filename="small_flashlight.obj" scale="1 1 1"/></geometry></collision>
+    <inertial><density value="450.0"/></inertial>
+  </link>
+</robot>
