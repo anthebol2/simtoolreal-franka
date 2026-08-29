@@ -235,3 +235,6 @@ evals/
 recorded_robot_inputs/
 franka_policy_v1/model.pth
 *_decomposed_var*.urdf
+
+# v3 deployment handover: docs + configs + assets go in git; large .pth files ship via GitHub Release
+deployment_handover_v3_2026-08-29/*/model.pth
