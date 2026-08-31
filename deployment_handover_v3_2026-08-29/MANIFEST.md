@@ -15,25 +15,36 @@ deployment_handover_v3_2026-08-29/
 └── yoga_can/config.yaml
 ```
 
-## Checkpoints (NOT in git — pull from GitHub Release)
+## Checkpoints (NOT in git — split across GitHub Release + rsync)
 
-Release: **`v3-baselines-2026-08-29`** at <https://github.com/anthebol2/simtoolreal-franka/releases>
+As of 2026-08-31, GitHub uploads from `dex5090-1` are throttled (0 bytes received in 85 s). See `HANDOVER_V3_DEPLOYMENT.md` §1a for full details. Short version:
 
-Assets (as of 2026-08-31):
-- `salt_can_model.pth` (~250 MB) — unchanged from 2026-08-29 upload
-- `half_cylinder_D10_W5_scanned_model.pth` (~250 MB) — unchanged from 2026-08-29 upload
-- `water_cup_model.pth` (~250 MB) — unchanged from 2026-08-29 upload (v2 retrain planned; this will be superseded)
-- `drill_blue_model.pth` (~250 MB) — **refreshed 2026-08-31** (8.13 → 9.90 successes)
-- `small_flashlight_model.pth` (~250 MB) — **refreshed 2026-08-31** (18.93 → 24.09 successes)
-- `yoga_can_model.pth` (~180 MB) — **NEW 2026-08-31** (15.08 successes; smaller size = num_envs=6144 training, see handover §4.1)
+**On GitHub Release `v3-baselines-2026-08-29`** at <https://github.com/anthebol2/simtoolreal-franka/releases>:
+- `salt_can_model.pth` (~250 MB)
+- `half_cylinder_D10_W5_scanned_model.pth` (~250 MB)
+- `water_cup_model.pth` (~250 MB) — v2 retrain planned; this will be superseded
 
+**Via rsync from `dex5090-1`** (blocked from GitHub Release by network throttling):
+- `yoga_can/model.pth` (~180 MB) — 15.08 successes, num_envs=6144 (see handover §4.1)
+- `drill_blue/model.pth` (~250 MB) — 9.90 successes
+- `small_flashlight/model.pth` (~250 MB) — 24.09 successes
+
+Combined command for the hardware machine (assuming SSH to `dex5090-1` works):
 ```bash
-gh release download v3-baselines-2026-08-29 \
-    --repo anthebol2/simtoolreal-franka \
-    --dir deployment_handover_v3_2026-08-29 \
-    --pattern '*.pth'
-# then place each model.pth in the per-object subdir (see HANDOVER_V3_DEPLOYMENT.md §1a)
-md5sum -c MODEL_CHECKSUMS.md5     # must show OK for all 6
+# 3 from GitHub Release
+gh release download v3-baselines-2026-08-29 --repo anthebol2/simtoolreal-franka --dir /tmp/v3_dl --pattern '*.pth'
+for obj in salt_can half_cylinder_D10_W5_scanned water_cup; do
+    mkdir -p deployment_handover_v3_2026-08-29/$obj
+    mv /tmp/v3_dl/${obj}_model.pth deployment_handover_v3_2026-08-29/$obj/model.pth
+done
+# 3 via rsync
+for obj in yoga_can drill_blue small_flashlight; do
+    mkdir -p deployment_handover_v3_2026-08-29/$obj
+    rsync -avP dex5090-1:/home/lipuhao/develop/simtoolreal-franka/deployment_handover_v3_2026-08-29/$obj/model.pth \
+        deployment_handover_v3_2026-08-29/$obj/model.pth
+done
+# verify
+md5sum -c deployment_handover_v3_2026-08-29/MODEL_CHECKSUMS.md5     # 6 x OK
 ```
 
 ## Object meshes / URDFs

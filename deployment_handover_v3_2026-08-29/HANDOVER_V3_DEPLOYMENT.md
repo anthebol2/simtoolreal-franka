@@ -65,28 +65,51 @@ Each dir contains: `<object>.urdf`, `<object>.obj` (textured visual mesh, meters
 Density-randomized variant URDFs (`_var000.urdf` … `_var099.urdf`) are training-only randomization and are gitignored — deployment uses the single canonical `_decomposed.urdf`. Density variation was Uniform(300, 600) kg/m³ during training; the deployment mesh mass matches the canonical inertial block in the URDF (paper convention).
 
 ### §1a Pulling the checkpoints (6 × ~250 MB = ~1.5 GB total)
-The `model.pth` files are **too big for git** — same convention as v1's `franka_policy_v1/model.pth`. They're attached to a GitHub Release on this repo:
+The `model.pth` files are **too big for git** — same convention as v1's `franka_policy_v1/model.pth`.
 
-**Release: `v3-baselines-2026-08-29`** on <https://github.com/anthebol2/simtoolreal-franka/releases>
+**As of 2026-08-31, GitHub uploads from `dex5090-1` are throttled/broken** (0 bytes received in 85 s). So the 6 checkpoints are split across two paths:
+
+#### Path A — GitHub Release (3 healthy assets uploaded 2026-08-29)
+Release: **`v3-baselines-2026-08-29`** at <https://github.com/anthebol2/simtoolreal-franka/releases/tag/v3-baselines-2026-08-29>
+
+Assets on the release:
+- `salt_can_model.pth` (state=uploaded)
+- `half_cylinder_D10_W5_scanned_model.pth` (state=uploaded)
+- `water_cup_model.pth` (state=uploaded)
 
 ```bash
-# Using gh CLI:
 gh release download v3-baselines-2026-08-29 \
     --repo anthebol2/simtoolreal-franka \
-    --dir deployment_handover_v3_2026-08-29 \
-    --pattern '*.pth'
-# Files land as deployment_handover_v3_2026-08-29/<object>_model.pth — rename/move into per-object subdirs:
-for obj in salt_can half_cylinder_D10_W5_scanned water_cup drill_blue small_flashlight yoga_can; do
+    --dir /tmp/v3_dl --pattern '*.pth'
+for obj in salt_can half_cylinder_D10_W5_scanned water_cup; do
     mkdir -p deployment_handover_v3_2026-08-29/$obj
-    mv deployment_handover_v3_2026-08-29/${obj}_model.pth deployment_handover_v3_2026-08-29/$obj/model.pth
+    mv /tmp/v3_dl/${obj}_model.pth deployment_handover_v3_2026-08-29/$obj/model.pth
 done
+```
 
-# Or wget individual assets (see the release page for URLs).
-# Then verify:
-md5sum -c deployment_handover_v3_2026-08-29/MODEL_CHECKSUMS.md5   # 6 lines must show OK
+#### Path B — rsync from `dex5090-1` (3 assets blocked by upload throttling)
+These 3 need to come via rsync/scp because GitHub uploads are throttled from `dex5090-1` today. This is the same convention used for v1's `franka_policy_v1/model.pth` (see `HANDOVER_REAL_DEPLOYMENT.md` §"What must be transferred", line 41).
+
+```bash
+# From the hardware machine (assumes SSH access to dex5090-1):
+for obj in yoga_can drill_blue small_flashlight; do
+    mkdir -p deployment_handover_v3_2026-08-29/$obj
+    rsync -avP dex5090-1:/home/lipuhao/develop/simtoolreal-franka/deployment_handover_v3_2026-08-29/$obj/model.pth \
+        deployment_handover_v3_2026-08-29/$obj/model.pth
+done
+```
+
+If SSH to `dex5090-1` isn't set up, ask anthony (or whoever manages the training box) to `scp` the files to a shared location or a USB drive.
+
+#### Verify integrity (all 6 files, both paths)
+```bash
+cd deployment_handover_v3_2026-08-29
+md5sum -c MODEL_CHECKSUMS.md5     # all 6 lines must say OK
 ```
 
 **Note on yoga_can size:** yoga_can's `model.pth` is ~182 MB rather than ~263 MB. It trained with `num_envs=6144` (half — see §4.1), which halves the minibatch_size and optimizer-state buffer sizes. Policy weights are complete; this is not a corruption sign. Verify via the checksum file.
+
+**When GitHub upload throttling clears** (usually within hours), the 3 rsync'd assets will be uploaded to the same release under the same names. If a file already exists in your local `deployment_handover_v3_2026-08-29/<obj>/`, keep whichever has the matching md5 in `MODEL_CHECKSUMS.md5`.
 
 ### Integrity check (do this after transfer)
 ```bash
