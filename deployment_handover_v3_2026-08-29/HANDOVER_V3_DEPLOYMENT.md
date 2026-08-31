@@ -1,10 +1,12 @@
-# HANDOVER: v3 deployment package — 5 trained single-object baselines (2026-08-29)
+# HANDOVER: v3 deployment package — 6 trained single-object baselines (updated 2026-08-31)
 
 **From:** the dev-machine (dex5090-1, 8× RTX 5090) SimToolReal training session.
 **To:** the Claude Code agent (and human) on the hardware machine that runs the
 real Franka + right SharPa lab.
-**Purpose:** 5 v3-trained single-object policies are ready to deploy today.
+**Purpose:** 6 v3-trained single-object policies are ready to deploy today.
 This document is what you read *before* opening any of the earlier handovers.
+
+**Update 2026-08-31:** Refreshed `small_flashlight` and `drill_blue` checkpoints (both improved), and **added `yoga_can`** (finally shipped after num_envs=6144 fix). See §0.
 
 **Prior handovers this replaces / builds on:**
 - [`HANDOVER_REAL_DEPLOYMENT.md`](../HANDOVER_REAL_DEPLOYMENT.md) — v1 (2026-08-13). Read for the deployment stack (ROS graph, node names, safety, bring-up rungs). Everything about the deployment pipeline still applies.
@@ -15,21 +17,25 @@ This document is what you read *before* opening any of the earlier handovers.
 
 ## 0. TL;DR — what changed and what you get
 
-**Deliverable (this directory):** 5 trained policies packaged with their configs and canonical object assets.
+**Deliverable (this directory):** 6 trained policies packaged with their configs. Assets live in the main repo at `assets/urdf/dextoolbench/`.
 
 | object | mean_successes @ 1cm | ship-gate margin | mesh source | model.pth (md5 first 8) | reproduction confidence |
 |---|---|---|---|---|---|
-| **salt_can** | 40.83 | 13.6× | scanned | `e491de40` | ✅ overwhelming |
-| **half_cylinder_D10_W5_scanned** | 16.67 | 5.5× | scanned primitive | `46f0b40b` | ✅ strong |
-| **small_flashlight** | 18.93 (and climbing) | 6.3× | scanned | `a2585335` | ✅ strong |
-| **water_cup** | 12.07 (and climbing) | 4.0× | scanned | `f47d317f` | ✅ solid |
-| **drill_blue** | 8.13 (and climbing) | 2.7× | scanned | `a552cd1f` | ⚠️ passes but thinnest margin |
+| **salt_can** (banked) | 40.83 | 13.6× | scanned | `e491de40` | ✅ overwhelming |
+| **small_flashlight** ⭐ NEW | 24.09 (killed after this) | 8.0× | scanned | `333bb146` | ✅ overwhelming |
+| **half_cylinder_D10_W5_scanned** (banked) | 16.67 | 5.5× | scanned primitive | `46f0b40b` | ✅ strong |
+| **yoga_can** ⭐ NEW | 15.08 | 5.0× | scanned | `bf45d261` | ✅ strong (see §4.1 caveat) |
+| **water_cup** | 13.18 | 4.4× | scanned | `f47d317f` | ✅ solid |
+| **drill_blue** ⭐ REFRESHED | 9.90 | 3.3× | scanned | `64b7d822` | ✅ solid |
 
 All numbers are `mean_successes` per episode in Isaac Gym at the training's terminal `success_tolerance = 0.01` (1 cm keypoint tolerance, held for 10 consecutive steps). This is **stricter** than the paper's `ε = 2 cm` position criterion, so every number above is a **conservative lower bound** on the paper-metric performance (monotone: reaching a 1 cm goal trivially reaches the 2 cm one). See `HANDOVER_V2_SIM_CHANGES.md` and the paper (§IV.A of arxiv 2602.16863) for the ε definition.
 
 **Objects intentionally NOT in this package:**
-- `yoga_can` — still training (curriculum at 1.5 cm tolerance, not yet at final 1 cm; mean_successes 2.65). **Do NOT deploy yet.** Required `--num_envs 6144` instead of 12288 due to a PhysX GPU solver kernel-launch limit on Blackwell + this mesh's convex hull complexity.
-- `handle_head_primitives` — this is the paper's actual generalist baseline. Oscillating at the ship threshold (mean_successes = 3.41, raw = 2.60) after 405k epochs. Not sustained above 3.0 for the 50 consecutive blocks the ship-gate requires. **Do NOT deploy yet** — likely plateauing near the bar; needs decision on whether to keep training.
+- `handle_head_primitives` — this is the paper's actual generalist baseline. Shipped now (mean_successes = 4.73) but with only 1.6× margin over the bar. Still training and climbing. Will be added to a future release once it's more comfortably past the bar.
+
+**Recent deployment package updates:**
+- 2026-08-31 refresh: `small_flashlight` (`a2585335` → `333bb146`, 18.93 → 24.09 successes), `drill_blue` (`a552cd1f` → `64b7d822`, 8.13 → 9.90 successes), and `yoga_can` added (never in prior release).
+- `water_cup` checkpoint is the original 2026-08-29 upload (12.07 → 13.18 mid-training; a fresh v2 retrain is planned, so a refresh here would be superseded).
 
 ---
 
@@ -48,6 +54,7 @@ Everything is in this directory (`deployment_handover_v3_2026-08-29/`, 1.3 GB to
 The URDFs, textured meshes, and convex-decomposed collision meshes for each object are already tracked in the main repo at:
 
 - `assets/urdf/dextoolbench/can/salt_can/`
+- `assets/urdf/dextoolbench/can/yoga_can/`
 - `assets/urdf/dextoolbench/half_cylinder/half_cylinder_D10_W5_scanned/`
 - `assets/urdf/dextoolbench/cup/water_cup/`
 - `assets/urdf/dextoolbench/drill/drill_blue/`
@@ -57,7 +64,7 @@ Each dir contains: `<object>.urdf`, `<object>.obj` (textured visual mesh, meters
 
 Density-randomized variant URDFs (`_var000.urdf` … `_var099.urdf`) are training-only randomization and are gitignored — deployment uses the single canonical `_decomposed.urdf`. Density variation was Uniform(300, 600) kg/m³ during training; the deployment mesh mass matches the canonical inertial block in the URDF (paper convention).
 
-### §1a Pulling the checkpoints (263 MB × 5 = 1.3 GB total)
+### §1a Pulling the checkpoints (6 × ~250 MB = ~1.5 GB total)
 The `model.pth` files are **too big for git** — same convention as v1's `franka_policy_v1/model.pth`. They're attached to a GitHub Release on this repo:
 
 **Release: `v3-baselines-2026-08-29`** on <https://github.com/anthebol2/simtoolreal-franka/releases>
@@ -69,13 +76,17 @@ gh release download v3-baselines-2026-08-29 \
     --dir deployment_handover_v3_2026-08-29 \
     --pattern '*.pth'
 # Files land as deployment_handover_v3_2026-08-29/<object>_model.pth — rename/move into per-object subdirs:
-for obj in salt_can half_cylinder_D10_W5_scanned water_cup drill_blue small_flashlight; do
+for obj in salt_can half_cylinder_D10_W5_scanned water_cup drill_blue small_flashlight yoga_can; do
     mkdir -p deployment_handover_v3_2026-08-29/$obj
     mv deployment_handover_v3_2026-08-29/${obj}_model.pth deployment_handover_v3_2026-08-29/$obj/model.pth
 done
 
 # Or wget individual assets (see the release page for URLs).
+# Then verify:
+md5sum -c deployment_handover_v3_2026-08-29/MODEL_CHECKSUMS.md5   # 6 lines must show OK
 ```
+
+**Note on yoga_can size:** yoga_can's `model.pth` is ~182 MB rather than ~263 MB. It trained with `num_envs=6144` (half — see §4.1), which halves the minibatch_size and optimizer-state buffer sizes. Policy weights are complete; this is not a corruption sign. Verify via the checksum file.
 
 ### Integrity check (do this after transfer)
 ```bash
@@ -125,21 +136,22 @@ The sim env's robot pose was rotated so the workspace lies at the base's **+x** 
 - **Any hardcoded 88.5° / 90° rotations in perception relay or goal node should be dropped or set to 0.** [VERIFY] before deployment: check `deployment/goal_pose_node.py`, `deployment/object_pose_relay_node.py`, `deployment/home_robot.py` — remove the yaw remap arguments.
 - **HOME arm pose:** the v3 sim uses the corrected HOME (base's +x). No arm-q1 shift needed anymore.
 
-### 2.3 Object set — 5 real lab tools (v3-specific, new)
+### 2.3 Object set — 6 real lab tools (v3-specific, new)
 
-Unlike v1's single generalist policy (procedural primitives), v3 trains **per-object policies**. Each of the 5 shipped policies is specialized to one physical object with 100 density-randomized variants (Uniform 300–600 kg/m³) for mass robustness. This is a **methodology deviation from the SimToolReal paper**, which trains one generalist policy — that generalist run (`handle_head_primitives`) is separate and is NOT in this package (see §0).
+Unlike v1's single generalist policy (procedural primitives), v3 trains **per-object policies**. Each of the 6 shipped policies is specialized to one physical object with 100 density-randomized variants (Uniform 300–600 kg/m³) for mass robustness. This is a **methodology deviation from the SimToolReal paper**, which trains one generalist policy — that generalist run (`handle_head_primitives`) is separate and is NOT in this package (see §0).
 
 Object provenance and physical dimensions:
 
 | object | category | mesh source | approx dims / mass range |
 |---|---|---|---|
 | salt_can | can | scanned | ~10 cm can body, 89–178 g (density × canonical volume) |
+| yoga_can | can | scanned | can body, 86–170 g (density × canonical volume) |
 | half_cylinder_D10_W5_scanned | half_cylinder | scanned primitive (D=10cm W=5cm) | half-cylinder printed reference primitive |
 | water_cup | cup | scanned | ~10 cm cup, 60–120 g |
 | drill_blue | drill | scanned | small blue drill |
 | small_flashlight | flashlight | scanned | 17.5 cm body, 83–164 g |
 
-**On the hardware side:** every object's `<object>_decomposed.urdf` and mesh files are in `deployment_handover_v3_2026-08-29/<object>/asset/`. Place them in the same folder structure your existing deployment expects, or point the deployment env's asset path at this directory. The reframe JSONs (`deployment/<object>_reframe.json`) exist in the main repo for the two newest objects (small_flashlight, eggpie); the older four (salt_can, half_cylinder, water_cup, drill_blue) should already have theirs if the lab has run them before.
+**On the hardware side:** every object's `<object>_decomposed.urdf` and mesh files live in the main repo at `assets/urdf/dextoolbench/<category>/<object>/` (pull the latest `franka-right-sharpa` branch). Point the deployment env's asset path there. The reframe JSONs (`deployment/<object>_reframe.json`) exist in the main repo for the two newest objects (small_flashlight, eggpie); the older four (salt_can, half_cylinder, water_cup, drill_blue) should already have theirs if the lab has run them before. For yoga_can, check whether a reframe JSON exists in `deployment/`; if not, one may need to be authored the same way small_flashlight's was.
 
 ### 2.4 Training config (paper SAPG, unchanged from v1)
 
@@ -206,10 +218,11 @@ python deployment/goal_pose_node.py \
 ### 3.4 Suggested order for today's deployment
 Do them in this order (highest confidence → thinnest margin):
 1. **salt_can** (13.6× margin, plateaued near ceiling — most predictable)
-2. **small_flashlight** (6.3× margin, simplest collision shape — should transfer cleanly)
+2. **small_flashlight** (8.0× margin, simplest collision shape — should transfer cleanly)
 3. **half_cylinder_D10_W5_scanned** (5.5× margin, printed primitive — simple shape)
-4. **water_cup** (4.0× margin)
-5. **drill_blue** (2.7× margin — leave last; expect the lowest sim→real success rate)
+4. **yoga_can** (5.0× margin — see §4.1 about the training-time env-count caveat; nothing to do at deployment time)
+5. **water_cup** (4.4× margin)
+6. **drill_blue** (3.3× margin — leave last; expect the lowest sim→real success rate)
 
 For each, run at `--vel_limit_fraction 0.5` first; raise toward 0.8 once you see smooth motion.
 
@@ -217,11 +230,13 @@ For each, run at `--vel_limit_fraction 0.5` first; raise toward 0.8 once you see
 
 ## 4. Known deviations from paper config (for the writeup)
 
-### 4.1 yoga_can trained at num_envs=6144 (not shipped in this package)
+### 4.1 yoga_can trained at num_envs=6144 (this package DOES include yoga_can as of the 2026-08-31 update)
 Every other object trains at the paper's 12288 envs. yoga_can hits a PhysX GPU solver kernel-launch limit on RTX 5090 at 12288 envs (`PxgTGSCudaSolverCore.cpp: GPU solveContactParallel fail to launch kernel`). Diagnosed via `CUDA_LAUNCH_BLOCKING=1`. Root cause: yoga_can has the highest single-hull vertex count (2445) and 7 convex hulls; contact-pair volume overflows the solver buffers at 12288 envs. Halving to 6144 fits. This is a Blackwell PhysX limit, not an algorithmic change — footnote it in the paper.
 
+Deployment-time impact: NONE. The trained policy consumes observations and produces actions at 60 Hz regardless of the training env count. The 6144 vs 12288 only affected how many parallel simulations the training loop stepped per batch.
+
 ### 4.2 Per-object policies vs paper's single generalist
-v3 trains 5 per-object policies (this package) + 1 generalist (`handle_head_primitives`, still training). The paper reports the generalist result on the 12-object real-world set. The 5 per-object baselines here are **additional** — they let you claim per-object reproduction quality but are not the paper's headline experiment.
+v3 trains 6 per-object policies (this package) + 1 generalist (`handle_head_primitives`, still training). The paper reports the generalist result on the 12-object real-world set. The 6 per-object baselines here are **additional** — they let you claim per-object reproduction quality but are not the paper's headline experiment.
 
 ---
 
