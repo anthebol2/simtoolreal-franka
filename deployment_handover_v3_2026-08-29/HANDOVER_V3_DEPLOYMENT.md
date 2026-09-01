@@ -22,11 +22,11 @@ This document is what you read *before* opening any of the earlier handovers.
 | object | mean_successes @ 1cm | ship-gate margin | mesh source | model.pth (md5 first 8) | reproduction confidence |
 |---|---|---|---|---|---|
 | **salt_can** (banked) | 40.83 | 13.6× | scanned | `e491de40` | ✅ overwhelming |
-| **small_flashlight** ⭐ NEW | 24.09 (killed after this) | 8.0× | scanned | `333bb146` | ✅ overwhelming |
+| **small_flashlight** ⭐ REFRESHED 2026-09-01 | 24.09+ (final trained) | 8.0×+ | scanned | `9b82ff74` | ✅ overwhelming |
 | **half_cylinder_D10_W5_scanned** (banked) | 16.67 | 5.5× | scanned primitive | `46f0b40b` | ✅ strong |
-| **yoga_can** ⭐ NEW | 15.08 | 5.0× | scanned | `bf45d261` | ✅ strong (see §4.1 caveat) |
+| **yoga_can** ⭐ REFRESHED 2026-09-01 | 15.08+ (final trained) | 5.0×+ | scanned | `3496195e` | ✅ strong (see §4.1 caveat) |
 | **water_cup** | 13.18 | 4.4× | scanned | `f47d317f` | ✅ solid |
-| **drill_blue** ⭐ REFRESHED | 9.90 | 3.3× | scanned | `64b7d822` | ✅ solid |
+| **drill_blue** ⭐ REFRESHED 2026-09-01 | 9.90+ (final trained) | 3.3×+ | scanned | `544f9936` | ✅ solid |
 
 All numbers are `mean_successes` per episode in Isaac Gym at the training's terminal `success_tolerance = 0.01` (1 cm keypoint tolerance, held for 10 consecutive steps). This is **stricter** than the paper's `ε = 2 cm` position criterion, so every number above is a **conservative lower bound** on the paper-metric performance (monotone: reaching a 1 cm goal trivially reaches the 2 cm one). See `HANDOVER_V2_SIM_CHANGES.md` and the paper (§IV.A of arxiv 2602.16863) for the ε definition.
 
@@ -34,8 +34,12 @@ All numbers are `mean_successes` per episode in Isaac Gym at the training's term
 - `handle_head_primitives` — this is the paper's actual generalist baseline. Shipped now (mean_successes = 4.73) but with only 1.6× margin over the bar. Still training and climbing. Will be added to a future release once it's more comfortably past the bar.
 
 **Recent deployment package updates:**
-- 2026-08-31 refresh: `small_flashlight` (`a2585335` → `333bb146`, 18.93 → 24.09 successes), `drill_blue` (`a552cd1f` → `64b7d822`, 8.13 → 9.90 successes), and `yoga_can` added (never in prior release).
-- `water_cup` checkpoint is the original 2026-08-29 upload (12.07 → 13.18 mid-training; a fresh v2 retrain is planned, so a refresh here would be superseded).
+- 2026-09-01 refresh (final trained state for 3 objects being killed to free GPUs for retrains + new object):
+  - `small_flashlight` md5 → `9b82ff74` (final best.pth from training run)
+  - `drill_blue` md5 → `544f9936` (final best.pth from training run)
+  - `yoga_can` md5 → `3496195e` (final best.pth from training run)
+- 2026-08-31 refresh (earlier intermediate): `small_flashlight` → `333bb146` (18.93 → 24.09), `drill_blue` → `64b7d822` (8.13 → 9.90), `yoga_can` added.
+- `water_cup` checkpoint on the release is the original 2026-08-29 upload (a fresh v2 retrain is planned, so a refresh here would be superseded).
 
 ---
 
