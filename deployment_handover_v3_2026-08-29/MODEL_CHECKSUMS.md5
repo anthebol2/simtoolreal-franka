@@ -3,4 +3,7 @@ e491de40921a4643f8baf976fd3d8028  salt_can/model.pth
 f47d317f1ac56552473f18960fbe1d6a  water_cup/model.pth
 544f99369e12612f01dd65fa3734844d  drill_blue/model.pth
 9b82ff746194d232895681fa5e99725b  small_flashlight/model.pth
-3496195e094a2cc5725d80f540a37997  yoga_can/model.pth
+e3ce7376afb9bd9d02ab1c747868e0af  yoga_can/model.pth
+7c01db39604f54b6cee3c25009788c75  salt_can_v2/model.pth
+55751c04c594ef77928f23f88eb7d5e7  water_cup_v2/model.pth
+b4ff545824010cee604c8fb8c7220bff  handle_head_primitives/model.pth
