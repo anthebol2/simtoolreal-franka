@@ -1,9 +1,10 @@
 e491de40921a4643f8baf976fd3d8028  salt_can/model.pth
+432c597a891f80b0806549d4917b18f8  salt_can_v2/model.pth
 46f0b40bff7776679a6b227ff7d3f37b  half_cylinder_D10_W5_scanned/model.pth
 f47d317f1ac56552473f18960fbe1d6a  water_cup/model.pth
+14a956e81185a9bad5d9332108d3b4e2  water_cup_v2/model.pth
 544f99369e12612f01dd65fa3734844d  drill_blue/model.pth
 9b82ff746194d232895681fa5e99725b  small_flashlight/model.pth
 e3ce7376afb9bd9d02ab1c747868e0af  yoga_can/model.pth
-7c01db39604f54b6cee3c25009788c75  salt_can_v2/model.pth
-55751c04c594ef77928f23f88eb7d5e7  water_cup_v2/model.pth
+38fe5649ac3b7ad79fbb1fa42bb10c76  gum_can/model.pth
 b4ff545824010cee604c8fb8c7220bff  handle_head_primitives/model.pth

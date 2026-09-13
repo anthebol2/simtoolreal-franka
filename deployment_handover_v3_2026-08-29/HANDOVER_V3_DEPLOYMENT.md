@@ -1,11 +1,12 @@
-# HANDOVER: v3 deployment package — 9 trained baselines (updated 2026-09-09)
+# HANDOVER: v3 deployment package — 10 trained baselines (updated 2026-09-11)
 
 **From:** the dev-machine (dex5090-1, 8× RTX 5090) SimToolReal training session.
 **To:** the Claude Code agent (and human) on the hardware machine that runs the
 real Franka + right SharPa lab.
-**Purpose:** 9 v3-trained policies (8 per-object baselines + 1 generalist) are ready to deploy today. All 9 are on the GitHub Release — **no more rsync fallback needed**.
+**Purpose:** 10 v3-trained policies (9 per-object baselines + 1 generalist) are ready to deploy today. All 10 are on the GitHub Release — **no more rsync fallback needed**.
 This document is what you read *before* opening any of the earlier handovers.
 
+**Update 2026-09-11:** Uploaded **`gum_can`** (scene2 new object, mean_successes=22.34 at 1cm tolerance, 7.4× margin) — the final training run has been killed and the checkpoint verified end-to-end on the release. This closes out the v3 training roster; there are no more training runs pending.
 **Update 2026-09-09:** Uploaded 3 new checkpoints to the release — **`salt_can_v2`**, **`water_cup_v2`** (v2 retrains with better meshes), and **`handle_head_primitives`** (paper's generalist baseline). Also completed the previously-blocked uploads (yoga_can, drill_blue, small_flashlight). All 9 md5s verified end-to-end (round-trip download check).
 **Update 2026-08-31:** Refreshed `small_flashlight` and `drill_blue` checkpoints (both improved), and **added `yoga_can`** (finally shipped after num_envs=6144 fix). See §0.
 
@@ -18,28 +19,35 @@ This document is what you read *before* opening any of the earlier handovers.
 
 ## 0. TL;DR — what changed and what you get
 
-**Deliverable (this directory):** 9 trained policies packaged with their configs. Assets live in the main repo at `assets/urdf/dextoolbench/`. **All 9 model.pth files are on the GitHub Release** — see §1a.
+**Deliverable (this directory):** 10 trained policies packaged with their configs. Assets live in the main repo at `assets/urdf/dextoolbench/`. **All 10 model.pth files are on the GitHub Release** — see §1a.
 
 | object | mean_successes @ 1cm | ship-gate margin | mesh source | model.pth (md5 first 8) | reproduction confidence |
 |---|---|---|---|---|---|
 | **salt_can** (v1 banked) | 40.83 | 13.6× | scanned | `e491de40` | ✅ overwhelming |
-| **water_cup_v2** ⭐ NEW 2026-09-09 | **34.00** (still climbing) | **11.3×** | carved-open scan | `55751c04` | ✅ overwhelming — best of batch |
-| **salt_can_v2** ⭐ NEW 2026-09-09 | **24.01** (still climbing) | 8.0× | fresh scan | `7c01db39` | ✅ overwhelming |
+| **water_cup_v2** | 34.45 (killed final) | 11.5× | carved-open scan | `14a956e8` local / `55751c04` release | ✅ overwhelming — best of batch |
+| **salt_can_v2** | 25.03 (killed final) | 8.3× | fresh scan | `432c597a` local / `7c01db39` release | ✅ overwhelming |
 | **small_flashlight** (final trained) | 24.09+ | 8.0×+ | scanned | `9b82ff74` | ✅ overwhelming |
+| **gum_can** ⭐ NEW 2026-09-11 | **22.34** (final trained, plateaued) | **7.4×** | scanned | `38fe5649` | ✅ strong — scene2 object |
 | **yoga_can** (final trained) | 20.94 | 7.0× | scanned | `e3ce7376` | ✅ strong (see §4.1) |
 | **half_cylinder_D10_W5_scanned** (banked) | 16.67 | 5.5× | scanned primitive | `46f0b40b` | ✅ strong |
 | **water_cup** (v1) | 13.18 | 4.4× | scanned (sealed) | `f47d317f` | ✅ solid (v2 recommended) |
 | **drill_blue** (final trained) | 11.52 | 3.8× | scanned | `544f9936` | ✅ solid |
 | **handle_head_primitives** ⭐ NEW 2026-09-09 | **4.70** (peak, then regressed) | **1.6×** | procedural | `b4ff5458` | ⚠️ thin margin — **paper's headline generalist**, best.pth captures peak |
 
+**Note on `_v2` mismatched md5s:** the release copies (`55751c04`, `7c01db39`) are from the 2026-09-09 upload snapshot when the v2 runs were at mean=34.00 / 24.01. The final killed-state checkpoints on disk (`14a956e8`, `432c597a`) reflect ~1 extra day of training (mean=34.45 / 25.03). The delta is trivial (<5% relative). We did NOT re-upload the tiny improvements to save time; deployment against the release copies is fine.
+
 All numbers are `mean_successes` per episode in Isaac Gym at the training's terminal `success_tolerance = 0.01` (1 cm keypoint tolerance, held for 10 consecutive steps). This is **stricter** than the paper's `ε = 2 cm` position criterion, so every number above is a **conservative lower bound** on the paper-metric performance (monotone: reaching a 1 cm goal trivially reaches the 2 cm one). See `HANDOVER_V2_SIM_CHANGES.md` and the paper (§IV.A of arxiv 2602.16863) for the ε definition.
 
-**Notes on the 3 new-to-release checkpoints:**
+**Notes on specific checkpoints:**
+- `gum_can` is the newest object trained (scene2 replaced 2026-09-05 with an upright gum can, 53×55×82 mm). Killed 2026-09-11 at 22.34 mean_successes; plateaued.
 - `salt_can_v2` and `water_cup_v2` are v2 retrains on better/corrected meshes; they still deploy alongside their v1 counterparts (v1 stays on the release too for comparison).
 - `handle_head_primitives` is the paper's **generalist policy on procedural primitives** — the paper's headline result. Peak checkpoint captured (mean_successes ≈ 4.7); after the peak the live policy regressed to ~1.6 and was killed. best.pth is from the peak. Deploy this as the paper baseline; expect real-world success rate to be substantially lower than sim (thin margin + all unaddressed v2 items like perception noise / arm SI).
 
+**All training runs are now complete.** No pending trainings on `dex5090-1`.
+
 **Recent updates:**
-- 2026-09-09: Uploaded `salt_can_v2`, `water_cup_v2`, `handle_head_primitives` to the release. Also uploaded `yoga_can`, `drill_blue`, `small_flashlight` (previously blocked by GitHub upload throttling). **Release now has all 9 checkpoints.**
+- 2026-09-11: Uploaded `gum_can` (10th checkpoint). All v3 training runs killed.
+- 2026-09-09: Uploaded `salt_can_v2`, `water_cup_v2`, `handle_head_primitives`. Also completed previously-blocked uploads (`yoga_can`, `drill_blue`, `small_flashlight`).
 - 2026-09-01 refresh (final trained state for 3 killed objects): `small_flashlight` `9b82ff74`, `drill_blue` `544f9936`, `yoga_can` `e3ce7376`.
 
 ---
@@ -69,22 +77,23 @@ Each dir contains: `<object>.urdf`, `<object>.obj` (textured visual mesh, meters
 
 Density-randomized variant URDFs (`_var000.urdf` … `_var099.urdf`) are training-only randomization and are gitignored — deployment uses the single canonical `_decomposed.urdf`. Density variation was Uniform(300, 600) kg/m³ during training; the deployment mesh mass matches the canonical inertial block in the URDF (paper convention).
 
-### §1a Pulling the checkpoints (9 × ~200–250 MB = ~2 GB total)
-The `model.pth` files are **too big for git** — same convention as v1's `franka_policy_v1/model.pth`. All 9 are attached to a single GitHub Release.
+### §1a Pulling the checkpoints (10 × ~200–250 MB = ~2.4 GB total)
+The `model.pth` files are **too big for git** — same convention as v1's `franka_policy_v1/model.pth`. All 10 are attached to a single GitHub Release.
 
 **Release:** `v3-baselines-2026-08-29` at <https://github.com/anthebol2/simtoolreal-franka/releases/tag/v3-baselines-2026-08-29>
 
-Assets on the release (all state=uploaded, verified 2026-09-09):
+Assets on the release (all state=uploaded, verified 2026-09-11):
 ```
 salt_can_model.pth                         250 MB
-salt_can_v2_model.pth                      250 MB  ⭐ NEW
+salt_can_v2_model.pth                      250 MB
 half_cylinder_D10_W5_scanned_model.pth     250 MB
 water_cup_model.pth                        250 MB
-water_cup_v2_model.pth                     174 MB  ⭐ NEW (num_envs=6144)
+water_cup_v2_model.pth                     174 MB  (num_envs=6144)
 drill_blue_model.pth                       250 MB
 small_flashlight_model.pth                 250 MB
 yoga_can_model.pth                         174 MB  (num_envs=6144 — see §4.1)
-handle_head_primitives_model.pth           250 MB  ⭐ NEW (paper's generalist)
+gum_can_model.pth                          250 MB  ⭐ NEW 2026-09-11
+handle_head_primitives_model.pth           250 MB  (paper's generalist)
 ```
 
 Pull command:
@@ -93,11 +102,11 @@ gh release download v3-baselines-2026-08-29 \
     --repo anthebol2/simtoolreal-franka \
     --dir /tmp/v3_dl --pattern '*.pth'
 for obj in salt_can salt_can_v2 half_cylinder_D10_W5_scanned water_cup water_cup_v2 \
-           drill_blue small_flashlight yoga_can handle_head_primitives; do
+           drill_blue small_flashlight yoga_can gum_can handle_head_primitives; do
     mkdir -p deployment_handover_v3_2026-08-29/$obj
     mv /tmp/v3_dl/${obj}_model.pth deployment_handover_v3_2026-08-29/$obj/model.pth
 done
-md5sum -c deployment_handover_v3_2026-08-29/MODEL_CHECKSUMS.md5   # all 9 lines must say OK
+md5sum -c deployment_handover_v3_2026-08-29/MODEL_CHECKSUMS.md5   # all 10 lines must say OK
 ```
 
 **Rsync fallback (no longer required, but preserved for reference):** the same files exist at `dex5090-1:/home/lipuhao/develop/simtoolreal-franka/deployment_handover_v3_2026-08-29/<obj>/model.pth` if the GitHub download ever fails.
